@@ -12,13 +12,11 @@ Two items, deliberately testing both branches TEST_PLAN.md calls for:
     milestone, lib/milestone-auto.js), and Production then hands the finished item to Dispatch from
     Shop Floor > Dispatch (POST /api/production/handovers). The old manual "Prod. Done" tick no
     longer exists (PATCH production_done is refused, 403); the flag is now DERIVED from handovers.
-  - Item HOLD (item_id 14): the QC hold-point branch. `requires_qc_hold` can ONLY ever be set to 1
-    on a Job Card generated from a real Work Order's route step that names a quality_checkpoint
-    (app/api/work-orders/[id]/generate-job-cards/route.js) -- a plain, directly-created Job Card has
-    no field for this at all. So THIS branch genuinely needs a real Work Order: create it, add one
-    route step with a quality checkpoint, release the Work Order, generate its Job Card (which comes
-    back with requires_qc_hold=1), confirm marking it done is blocked until QC explicitly releases
-    the hold (POST .../qc-release), then confirm it can complete afterward.
+  - Item HOLD (item_id 14): a Job Card generated from a Work Order route step that names a
+    quality_checkpoint. That used to set requires_qc_hold=1 and block "done" until QC released it
+    (POST .../qc-release). The old hold code is retired: hold points now live on the ITP traveler
+    (job_sheets card_type 'itp', checked by scripts/check-quality.mjs), so the generated card comes back
+    with requires_qc_hold=0 and completes normally.
 
 Both items also exercise a real, previously-untested-but-already-working linkage: raising a
 Material Indent WITH a job_card_id set correctly flows through to the resulting material_issues
@@ -284,10 +282,10 @@ def run(do_reset=True):
 
     cards = must_ok(api(session, "GET", f"/api/job-cards?project_id={PROJECT_ID}&work_order_id={wo['id']}"), "list_job_cards")
     jc_hold = cards[0]["id"] if cards else None
-    check("The generated Job Card carries requires_qc_hold=1 (its route step named a checkpoint)",
-          bool(cards) and bool(cards[0].get("requires_qc_hold")), f"cards={cards}")
+    check("The generated Job Card carries no QC hold (hold points moved to the ITP traveler)",
+          bool(cards) and not cards[0].get("requires_qc_hold"), f"cards={cards}")
 
-    print("Item HOLD: raising a Material Indent against it, Stores releases it (allowed even while held)...")
+    print("Item HOLD: raising a Material Indent against it, Stores releases it...")
     indent2_id, indent2_item_id = create_indent(session, bom_hold, ITEM_HOLD["qty"], jc_hold)
     release_indent_item(session, indent2_id, indent2_item_id, ITEM_HOLD["qty"])
     issue2 = turso_query("SELECT job_card_id, qty FROM material_issues WHERE bom_item_id = ?", [bom_hold])
@@ -295,16 +293,10 @@ def run(do_reset=True):
           bool(issue2) and issue2[0]["job_card_id"] == jc_hold and float(issue2[0]["qty"]) == ITEM_HOLD["qty"],
           f"issue={issue2}, expected job_card_id={jc_hold}")
 
-    print("Item HOLD: logging time (labor can happen while held), then trying to mark it done...")
+    print("Item HOLD: logging time, then marking it done...")
     log_time(session, jc_hold, 240)
     r = set_job_card_status(session, jc_hold, "done")
-    check("Item HOLD: marking done is BLOCKED while the QC hold point is unreleased",
-          r.status_code == 400 and "held" in r.text.lower(), f"status={r.status_code}, body={r.text[:200]}")
-
-    print("Item HOLD: QC releases the hold point, then Production can complete it...")
-    must_ok(api(session, "POST", f"/api/job-cards/{jc_hold}/qc-release"), "qc_release")
-    r = set_job_card_status(session, jc_hold, "done")
-    check("Item HOLD: marking done now succeeds once QC released the hold", r.ok, f"status={r.status_code}, body={r.text[:200]}")
+    check("Item HOLD: marking done succeeds (no job-card hold any more)", r.ok, f"status={r.status_code}, body={r.text[:200]}")
 
     milestone2 = get_milestone(MILESTONE_HOLD_ID)
     check("Item HOLD: its milestone auto-completed too", milestone2 and milestone2["status"] == "done" and milestone2["actual_end"],

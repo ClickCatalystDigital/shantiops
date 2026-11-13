@@ -23,6 +23,7 @@ import CertPicker from '@/components/CertPicker';
 import HandoverDialog, { buildSubsystems } from '@/components/HandoverDialog';
 import FloatingPdfPanel from '@/components/FloatingPdfPanel';
 import PdfInlinePreview from '@/components/PdfInlinePreview';
+import ItpTraveler from '@/components/ItpTraveler';
 
 const STATE_TONE = {
   pending: '', in_progress: 'bg-primary/5', done: 'bg-warning-surface/60', qc_signed: 'bg-success-surface/60',
@@ -85,7 +86,8 @@ function SheetTile({ s, onOpen }) {
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold">{s.job_number || s.jc_no}</span>
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          {s.card_type === 'aph' && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">APH</Badge>}{s.jc_no}
+          {s.card_type === 'aph' && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">APH</Badge>}
+          {s.card_type === 'itp' && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">ITP</Badge>}{s.jc_no}
         </span>
       </div>
       <p className="truncate text-xs text-muted-foreground">{s.project_no || 'No project'}{s.project_name ? ` · ${s.project_name}` : ''}</p>
@@ -102,14 +104,20 @@ function SheetTile({ s, onOpen }) {
 }
 
 function NewSheetDialog({ projects, onClose, onCreated }) {
-  const [f, setF] = useState({ card_type: 'boiler', job_number: '', project_id: '', drawing_approved_on: '', owner_name: '' });
+  const [f, setF] = useState({ card_type: 'boiler', job_number: '', project_id: '', drawing_approved_on: '', owner_name: '', itp_template_id: '', customer_po: '', item_number: '' });
   const [busy, setBusy] = useState(false);
-  const type = JOB_SHEET_TYPES[f.card_type];
+  const [templates, setTemplates] = useState([]);
+  useEffect(() => { api('/api/itp-templates').then(setTemplates).catch(() => {}); }, []);
+  const tpl = templates.find(t => String(t.id) === f.itp_template_id);
+  const type = f.card_type === 'itp' ? { label: tpl ? tpl.name : 'ITP traveler', stages: { length: tpl?.points || 0 } } : JOB_SHEET_TYPES[f.card_type];
   async function submit(e) {
-    e.preventDefault(); setBusy(true);
+    e.preventDefault();
+    if (f.card_type === 'itp' && !f.itp_template_id) return showToast('Pick the ITP template', 'error');
+    setBusy(true);
     try {
-      const r = await api('/api/job-sheets', { method: 'POST', body: f });
-      showToast(`${type.label} created with ${r.stages} stages`); onCreated(r.id);
+      const body = f.card_type === 'itp' ? f : { ...f, itp_template_id: undefined };
+      const r = await api('/api/job-sheets', { method: 'POST', body });
+      showToast(`${type.label} created with ${r.stages} ${f.card_type === 'itp' ? 'points' : 'stages'}`); onCreated(r.id);
     } catch (err) { showToast(err.message, 'error'); setBusy(false); }
   }
   return (
@@ -126,8 +134,24 @@ function NewSheetDialog({ projects, onClose, onCreated }) {
                   <span className="text-xs text-muted-foreground">{t.stages.length} production stages</span>
                 </button>
               ))}
+              {templates.length > 0 && (
+                <button type="button" onClick={() => setF({ ...f, card_type: 'itp' })}
+                  className={`col-span-2 rounded-lg border p-3 text-left text-sm transition-colors ${f.card_type === 'itp' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
+                  <span className="block font-medium">ITP traveler</span>
+                  <span className="text-xs text-muted-foreground">Inspection points from an ITP template, with hold, witness and review points enforced</span>
+                </button>
+              )}
             </div>
           </div>
+          {f.card_type === 'itp' && (<>
+            <div className="flex flex-col gap-1"><Label>ITP template</Label>
+              <SearchableSelect value={f.itp_template_id} onChange={v => setF({ ...f, itp_template_id: v })} placeholder="Select template…"
+                options={templates.map(t => ({ value: String(t.id), label: `${t.name}${t.revision ? ` · rev ${t.revision}` : ''} · ${t.points} points` }))} /></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1"><Label>Customer PO</Label><Input value={f.customer_po} onChange={e => setF({ ...f, customer_po: e.target.value })} /></div>
+              <div className="flex flex-col gap-1"><Label>Item number</Label><Input value={f.item_number} onChange={e => setF({ ...f, item_number: e.target.value })} /></div>
+            </div>
+          </>)}
           <div className="flex flex-col gap-1"><Label>Job number</Label>
             <Input value={f.job_number} onChange={e => setF({ ...f, job_number: e.target.value })} required autoFocus /></div>
           <div className="flex flex-col gap-1"><Label>Project</Label>
@@ -139,7 +163,7 @@ function NewSheetDialog({ projects, onClose, onCreated }) {
             <div className="flex flex-col gap-1"><Label>Owner name (fitter)</Label>
               <Input value={f.owner_name} onChange={e => setF({ ...f, owner_name: e.target.value })} /></div>
           )}
-          <p className="text-xs text-muted-foreground">All {type.stages.length} production stages are added automatically. A project can have more than one card, for example a boiler card and an APH card.</p>
+          <p className="text-xs text-muted-foreground">{f.card_type === 'itp' ? 'The template\'s points are copied onto this card; later template edits do not change it. ' : ''}All {type.stages.length} {f.card_type === 'itp' ? 'points' : 'production stages'} are added automatically. A project can have more than one card, for example a boiler card and an APH card.</p>
           <DialogFooter><Button type="submit" disabled={busy}>Create</Button></DialogFooter>
         </form>
       </DialogContent>
@@ -247,7 +271,7 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
           <SheetTitle className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span>{d ? (d.job_number || d.jc_no) : 'Job Card'}</span>
             {d && <span className="text-sm font-normal text-muted-foreground">{d.jc_no} · {d.project_no || 'No project'}</span>}
-            {d && <span className="ml-auto pr-8 text-sm font-normal tnum">{d.done} / {d.total} stages</span>}
+            {d && !d.itp_template_id && <span className="ml-auto pr-8 text-sm font-normal tnum">{d.done} / {d.total} stages</span>}
           </SheetTitle>
         </SheetHeader>
 
@@ -255,7 +279,7 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
           <>
             <div className="border-b px-4 py-2">
               <button type="button" onClick={() => setShowHeader(v => !v)} className="flex w-full items-center gap-2 text-left text-xs text-muted-foreground">
-                <span>{d.card_type === 'aph' ? 'APH' : 'Boiler'} · Drawing approved: {d.drawing_approved_on ? formatDate(d.drawing_approved_on) : '—'} · {d.card_type === 'aph' ? `Owner: ${d.owner_name || '—'}` : `IBR/BVI: ${d.ibr_bvi || '—'}`} · Start: {d.start_date ? formatDate(d.start_date) : '—'} · End: {d.end_date ? formatDate(d.end_date) : '—'}</span>
+                <span>{d.card_type === 'itp' ? 'ITP traveler' : d.card_type === 'aph' ? 'APH' : 'Boiler'} · Drawing approved: {d.drawing_approved_on ? formatDate(d.drawing_approved_on) : '—'} · {d.card_type === 'aph' ? `Owner: ${d.owner_name || '—'}` : `IBR/BVI: ${d.ibr_bvi || '—'}`} · Start: {d.start_date ? formatDate(d.start_date) : '—'} · End: {d.end_date ? formatDate(d.end_date) : '—'}</span>
                 <ChevronDownIcon className={`ml-auto size-4 transition-transform ${showHeader ? 'rotate-180' : ''}`} />
               </button>
               {showHeader && (
@@ -273,6 +297,7 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
               )}
             </div>
 
+            {d.itp_template_id ? <ItpTraveler d={d} canProduction={canProduction} canQc={canQc} onChanged={refresh} /> : (<>
             <div className="flex items-center gap-2 border-b px-4 py-2">
               {[['all', 'All'], ['open', 'Open'], ['qc', 'Waiting on QC']].map(([k, l]) => (
                 <Button key={k} size="xs" variant={filter === k ? 'default' : 'outline'} onClick={() => setFilter(k)}>{l}</Button>
@@ -340,6 +365,7 @@ function SheetDetail({ id, workers, canProduction, canQc, onClose, onDeleted }) 
               </table>
               {rows.length === 0 && <p className="p-6 text-center text-sm text-muted-foreground">Nothing here.</p>}
             </div>
+            </>)}
 
             <div className="flex flex-wrap items-end gap-3 border-t bg-background px-4 py-3">
               <div className="min-w-[220px] flex-1">

@@ -15,6 +15,9 @@ import NcrPanel from './NcrPanel';
 import JobSheetBoard from './JobSheetBoard';
 import QcPanel from './QcPanel';
 import JobWorkPanel from './JobWorkPanel';
+import ItpTemplates from './ItpTemplates';
+import WeldingRegisters from './WeldingRegisters';
+import AcceptanceRules from './AcceptanceRules';
 import SearchableSelect from './SearchableSelect';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -25,7 +28,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { QC_SERIES } from '@/lib/qc-series';
 import { IBR_VERSIONS, DEFAULT_NEW_IBR, ibrVersion, ibrLabel } from '@/lib/qc-ibr.mjs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { FlaskConicalIcon, FileTextIcon, GaugeIcon, AlertTriangleIcon, LockIcon, LinkIcon, ClipboardCheckIcon, InboxIcon, TruckIcon, ListChecksIcon } from 'lucide-react';
+import { FlaskConicalIcon, FileTextIcon, GaugeIcon, AlertTriangleIcon, LockIcon, LinkIcon, ClipboardCheckIcon, InboxIcon, TruckIcon, ListChecksIcon, ClipboardListIcon, FlameIcon, ScaleIcon } from 'lucide-react';
 
 // "Assign to Units" is a sub-tab of Test Certificates, not a new top-level tab — same group/children
 // shape ProcurementWorkspace.jsx's own "Suppliers" (Roster/Analysis) nav item already uses. It's
@@ -45,6 +48,16 @@ const ITEMS = [
   { key: 'docs', label: 'Documents', icon: FileTextIcon },
   { key: 'ncr', label: 'NCR', icon: AlertTriangleIcon },
   { key: 'holds', label: 'Job Cards', icon: LockIcon },
+  // Inspection plan (docs/gulf-coast-asme-plan.md): ITP templates the travelers are made from, the welding
+  // registers per-weld points read, and the acceptance rules measured values are judged against.
+  {
+    key: 'plan', label: 'Inspection Plan', icon: ClipboardListIcon, group: true,
+    children: [
+      { key: 'itp-templates', label: 'ITP Templates', icon: ClipboardListIcon },
+      { key: 'welding', label: 'Welding', icon: FlameIcon },
+      { key: 'rules', label: 'Acceptance Rules', icon: ScaleIcon },
+    ],
+  },
   { key: 'calibration', label: 'Calibration', icon: GaugeIcon },
   // Inward + Pre-Dispatch QC/Production Approval Workflow — QC's own department-local slice (the
   // retired top-level /material-review page). Production gets its own Pre-Dispatch-only Approvals
@@ -88,7 +101,7 @@ function ExtraDocsPicker({ value, onChange, disabled }) {
 
 const certProjectIds = c => (c.project_ids ? String(c.project_ids).split(',').map(Number) : []);
 
-export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], holdPoints = [], splitOrders = [], extraDocs = {}, canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], jobSheetStages = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, testRecords = [], jobWorkInspections = [], workOrders = [], bomAssemblies = [], hydroMilestoneId = null, canEditQc = false, canEditProductionQc = false, initialTab, initialProject }) {
+export default function QcWorkspace({ projects = [], certificates = [], documents = [], calibrationItems = [], ncrs = [], splitOrders = [], extraDocs = {}, canDisposition = false, canVerify = false, canClose = false, inwardApprovals = [], jobSheetStages = [], preDispatchApprovals = [], canDecideInward = false, canDecideQcPreDispatch = false, testRecords = [], jobWorkInspections = [], workOrders = [], bomAssemblies = [], hydroMilestoneId = null, canEditQc = false, canEditProductionQc = false, canItp = false, canWeld = false, canWpsApprove = false, canRules = false, initialTab, initialProject }) {
   const [tab, setTab] = useState(FLAT_TAB_KEYS.includes(initialTab) ? initialTab : 'tc-bank');
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -186,7 +199,7 @@ export default function QcWorkspace({ projects = [], certificates = [], document
   return (
     <WorkspaceSidebar title="Quality Control" icon={FlaskConicalIcon} items={ITEMS}
       activeKey={tab} onChange={setTab}
-      header={tab === 'tc-assign' ? assignHeader : ['calibration', 'holds', 'inward-approvals', 'jobsheet-approvals', 'predispatch-approvals'].includes(tab) ? null : header}>
+      header={tab === 'tc-assign' ? assignHeader : ['calibration', 'holds', 'inward-approvals', 'jobsheet-approvals', 'predispatch-approvals', 'itp-templates', 'rules'].includes(tab) ? null : header}>
       {tab === 'tc-bank' ? (
         <TcBank certificates={shownCerts} projects={projectsSorted} defaultProjectIds={projectId != null ? [projectId] : []} />
       ) : tab === 'test-records' ? (
@@ -241,6 +254,12 @@ export default function QcWorkspace({ projects = [], certificates = [], document
         <NcrPanel ncrs={shownNcrs} canDisposition={canDisposition} canVerify={canVerify} canClose={canClose} />
       ) : tab === 'holds' ? (
         <JobSheetBoard projects={projects} canQc />
+      ) : tab === 'itp-templates' ? (
+        <ItpTemplates canEdit={canItp} />
+      ) : tab === 'welding' ? (
+        <WeldingRegisters projectId={projectId} canEdit={canWeld} canApprove={canWpsApprove} />
+      ) : tab === 'rules' ? (
+        <AcceptanceRules canEdit={canRules} />
       ) : tab === 'calibration' ? (
         <CalibrationPanel items={calibrationItems} canEdit />
       ) : tab === 'jobsheet-approvals' ? (

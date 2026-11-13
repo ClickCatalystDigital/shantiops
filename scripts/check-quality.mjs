@@ -1,0 +1,128 @@
+// ITP gates end to end through the real routes (docs/gulf-coast-asme-plan.md, Phase 1).
+// Runs on a SCRATCH database seeded by scripts/demo/seed-acme-us.mjs (it writes). Usage:
+//   BASE=http://localhost:8790 DB=<that sqlite file> [PASS=acme-demo] node scripts/check-quality.mjs
+// Starts from AB-1005's traveler as seeded: RT failed on weld L1, NCR open, 4.2 onward not cleared.
+import { execFileSync } from 'node:child_process';
+const BASE = process.env.BASE || 'http://localhost:8790', PASS = process.env.PASS || 'acme-demo', DB = process.env.DB;
+if (!DB) { console.error('DB (the scratch sqlite file) is required'); process.exit(1); }
+const sql = s => execFileSync('sqlite3', ['-json', DB, s]).toString().trim();
+const rows = s => { const t = sql(s); return t ? JSON.parse(t) : []; };
+
+const jars = {};
+async function login(u) {
+  if (jars[u]) return jars[u];
+  const r = await fetch(`${BASE}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, password: PASS }) });
+  if (!r.ok) throw new Error(`login ${u}: ${r.status}`);
+  return (jars[u] = r.headers.getSetCookie().map(c => c.split(';')[0]).join('; '));
+}
+async function call(u, method, path, body) {
+  const r = await fetch(`${BASE}${path}`, { method, headers: { 'content-type': 'application/json', cookie: await login(u) }, body: body && JSON.stringify(body) });
+  return { status: r.status, data: await r.json().catch(() => ({})) };
+}
+
+let failed = 0;
+function expect(name, got, want, data) {
+  const ok = Array.isArray(want) ? want.includes(got) : got === want;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : ` (got ${got}, want ${want}: ${JSON.stringify(data).slice(0, 200)})`}`);
+  if (!ok) failed++;
+}
+
+const [sheet] = rows("SELECT id, project_id FROM job_sheets WHERE itp_template_id IS NOT NULL ORDER BY id DESC LIMIT 1");
+const pt = Object.fromEntries(rows(`SELECT id, item_key FROM job_sheet_stages WHERE sheet_id = ${sheet.id}`).map(r => [r.item_key, r.id]));
+const stage = (u, k, body) => call(u, 'PATCH', `/api/job-sheets/${sheet.id}/stages/${pt[k]}`, body);
+const [l1] = rows(`SELECT id FROM welds WHERE project_id = ${sheet.project_id} AND weld_no = 'L1'`);
+const [ncr] = rows(`SELECT id, qc_record_id FROM ncr_records WHERE job_sheet_stage_id = ${pt['4.2']} AND status != 'closed'`);
+const [repairWps] = rows("SELECT id FROM wps WHERE is_repair = 1 AND status = 'approved'");
+const today = new Date().toISOString().slice(0, 10);
+
+// 1. A failed point blocks what depends on it, through the API, not just on screen.
+let r = await stage('production_head', '4.3', { action: 'start', date: today });
+expect('Start 4.3 while RT on L1 has failed → 409', r.status, 409, r.data);
+r = await stage('qc_head', '4.2', { action: 'qc', date: today });
+expect('QC sign 4.2 with a failing RT → 409', r.status, 409, r.data);
+// An unrelated chain still works: 4.4 needs only 1.4 (seeded with notice sent and started).
+r = await stage('production_head', '4.4', { action: 'finish', date: today });
+expect('Finish 4.4 (does not depend on 4.2) → 200', r.status, 200, r.data);
+
+// 2. A decided inspection is frozen.
+r = await call('qc_head', 'PATCH', `/api/qc-records/${ncr.qc_record_id}`, { result: 'pass' });
+expect('Turn the failed RT into a pass → 409', r.status, 409, r.data);
+r = await call('qc_head', 'DELETE', `/api/qc-records/${ncr.qc_record_id}`);
+expect('Delete the failed RT → 409', r.status, 409, r.data);
+
+// 3. Who may do what.
+r = await stage('production_head', '4.1', { action: 'release', release_ref: 'x' });
+expect('Production records a customer release → 403', r.status, 403, r.data);
+r = await call('qc_head', 'POST', `/api/ncrs/${ncr.id}/repair`, { notes: 'x' });
+expect('QC records the repair (Production only) → 403', r.status, 403, r.data);
+
+// 4. NCR → repair → retest → verify → close.
+r = await call('qc_head', 'POST', `/api/ncrs/${ncr.id}/disposition`, { disposition: 'repair', disposition_notes: 'Excavate and re-weld' });
+expect('Weld repair without a repair WPS → 400', r.status, 400, r.data);
+r = await call('qc_head', 'POST', `/api/ncrs/${ncr.id}/disposition`, { disposition: 'repair', disposition_notes: 'Excavate and re-weld', repair_wps_id: repairWps.id });
+expect('Disposition repair with approved WPS-103R → 200', r.status, 200, r.data);
+r = await call('qc_head', 'POST', `/api/ncrs/${ncr.id}/verify`, {});
+expect('Verify before the repair is recorded → 409', r.status, 409, r.data);
+r = await call('production_head', 'POST', `/api/ncrs/${ncr.id}/repair`, { notes: 'Ground out 4" of L1, re-welded SMAW per WPS-103R' });
+expect('Production records the repair → 200', r.status, 200, r.data);
+r = await call('qc_head', 'POST', `/api/ncrs/${ncr.id}/verify`, {});
+expect('Verify before a passing retest → 409', r.status, 409, r.data);
+r = await call('qc_head', 'POST', '/api/qc-records', { project_id: sheet.project_id, job_sheet_stage_id: pt['4.2'], weld_id: l1.id, test_type: 'RT', result: 'pass', tested_on: today, reference_no: 'RT-CHECK-1R' });
+expect('Record the retest RT on L1 (pass) → 200', r.status, [200, 201], r.data);
+const [retest] = rows(`SELECT supersedes_id FROM qc_records WHERE reference_no = 'RT-CHECK-1R'`);
+expect('Retest points at the failed record', retest?.supersedes_id, ncr.qc_record_id, retest);
+r = await stage('qc_head', '4.2', { action: 'qc', date: today });
+expect('QC sign 4.2 while the NCR is still open → 409', r.status, 409, r.data);
+r = await call('qc_head', 'POST', `/api/ncrs/${ncr.id}/verify`, {});
+expect('Verify after repair + passing retest → 200', r.status, 200, r.data);
+r = await call('qc_head', 'POST', `/api/ncrs/${ncr.id}/close`, {});
+expect('Close the NCR → 200', r.status, 200, r.data);
+const failedStill = rows(`SELECT result FROM qc_records WHERE id = ${ncr.qc_record_id}`)[0]?.result;
+expect('The failed RT is still on record', failedStill, 'fail');
+
+// 5. Sign and release the hold point; two parallel releases can't both win.
+r = await stage('qc_head', '4.2', { action: 'qc', date: today });
+expect('QC sign 4.2 after the loop → 200', r.status, 200, r.data);
+r = await stage('production_head', '4.3', { action: 'start', date: today });
+expect('Start 4.3 before the customer releases hold point 4.2 → 409', r.status, 409, r.data);
+const both = await Promise.all([1, 2].map(i => stage('qc_head', '4.2', { action: 'release', release_ref: `Customer email ${i}` })));
+expect('Two parallel releases → one 200 and one 409', both.map(x => x.status).sort().join(','), '200,409', both.map(x => x.data));
+r = await stage('production_head', '4.3', { action: 'start', date: today });
+expect('Start witness point 4.3 before the notice → 409', r.status, 409, r.data);
+await stage('qc_head', '4.3', { action: 'notify' });
+r = await stage('production_head', '4.3', { action: 'start', date: today });
+expect('Start 4.3 once 4.2 is cleared and notice sent → 200', r.status, 200, r.data);
+
+// 6. Shipping: refused while a point is open, allowed once everything is cleared or marked not applicable.
+const pl = await call('dispatch_head', 'POST', '/api/packing', { project_id: sheet.project_id, customer_name: 'ITP check' });
+expect('Create a packing list → 200', pl.status, [200, 201], pl.data);
+const plId = pl.data.id;
+sql(`UPDATE packing_lists SET status = 'packed' WHERE id = ${plId}; INSERT INTO pre_dispatch_approvals (packing_list_id, status, submitted_by) VALUES (${plId}, 'approved', 'check')`);
+r = await call('dispatch_head', 'PATCH', `/api/packing/${plId}`, { status: 'dispatched' });
+expect('Dispatch with ITP points still open → 409', r.status, 409, r.data);
+for (const k of ['4.3', '4.4', '5.1', '5.2', '6.1', '6.2', '6.3', '7.1']) {
+  const [s] = rows(`SELECT qc_sign_by, not_applicable FROM job_sheet_stages WHERE id = ${pt[k]}`);
+  if (s.qc_sign_by || s.not_applicable) continue;
+  r = await stage('qc_head', k, { action: 'na', reason: 'Closed out by the ITP check script' });
+  if (r.status !== 200) expect(`Mark ${k} not applicable`, r.status, 200, r.data);
+}
+r = await call('dispatch_head', 'PATCH', `/api/packing/${plId}`, { status: 'dispatched' });
+expect('Dispatch with every point cleared but another NCR open → 409', r.status, 409, r.data);
+for (const n of rows(`SELECT id FROM ncr_records WHERE project_id = ${sheet.project_id} AND status != 'closed'`)) {
+  await call('qc_head', 'POST', `/api/ncrs/${n.id}/disposition`, { disposition: 'use_as_is', disposition_notes: 'Accepted by engineering (check script)' });
+  await call('qc_head', 'POST', `/api/ncrs/${n.id}/verify`, {});
+  r = await call('qc_head', 'POST', `/api/ncrs/${n.id}/close`, {});
+  if (r.status !== 200) expect(`Close NCR ${n.id}`, r.status, 200, r.data);
+}
+r = await call('dispatch_head', 'PATCH', `/api/packing/${plId}`, { status: 'dispatched' });
+expect('Dispatch once every point is cleared and no NCR is open → 200', r.status, 200, r.data);
+
+// 7. A card without a template is not touched by any of this.
+const [boiler] = rows("SELECT s.id, s.sheet_id, (SELECT id FROM employees LIMIT 1) AS emp FROM job_sheet_stages s JOIN job_sheets j ON j.id = s.sheet_id WHERE j.itp_template_id IS NULL AND s.start_date IS NULL ORDER BY s.id LIMIT 1");
+r = await call('production_head', 'PATCH', `/api/job-sheets/${boiler.sheet_id}/stages/${boiler.id}`, { action: 'start', date: today });
+expect('Boiler card still requires a fitter → 400', r.status, 400, r.data);
+r = await call('production_head', 'PATCH', `/api/job-sheets/${boiler.sheet_id}/stages/${boiler.id}`, { action: 'start', date: today, fitter_employee_id: boiler.emp });
+expect('Boiler job card stage starts as before → 200', r.status, 200, r.data);
+
+console.log(failed ? `\n${failed} check(s) failed` : '\nall ITP checks passed');
+process.exit(failed ? 1 : 0);

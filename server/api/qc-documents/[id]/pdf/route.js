@@ -3,6 +3,8 @@ import { getQcDocumentDetail } from '@/lib/data';
 import { queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isCustomer, isInternal, canAccessProject } from '@/lib/auth';
 import { renderQcFolderPdf } from '@/lib/qc-folder-pdf';
+import { IS_US } from '@/lib/market';
+import { buildAsmeData } from '@/lib/quality';
 import { checkpointSummaryFromDetail } from '@/lib/qc-checkpoints.mjs';
 
 export const runtime = 'nodejs';
@@ -53,6 +55,8 @@ export async function GET(req, props) {
     `SELECT p.id, p.project_no, p.customer_name, p.series, p.is_sib, p.model_capacity, c.phone AS customer_phone
      FROM projects p LEFT JOIN customers c ON c.id = p.customer_id WHERE p.id = ?`,
     [detail.document.project_id]);
+  // US package: welds, WPS, welders and NDE come from the registers (lib/quality.js).
+  if (IS_US) detail.document = { ...detail.document, asme_data: await buildAsmeData(detail.document) };
   const pdf = await renderQcFolderPdf(detail.document, detail.parts, detail.mountings, project, detail.groups, detail.form4aGroups, detail.seams);
   return new NextResponse(pdf, {
     headers: {

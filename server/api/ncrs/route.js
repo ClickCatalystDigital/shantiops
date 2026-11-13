@@ -32,6 +32,10 @@ export async function GET(req) {
 // work_order_id, then job_card_id, then a bare project_id in the body when none of the four apply
 // (a field-found defect with no upstream link yet).
 async function resolveProjectId(b) {
+  if (b.job_sheet_stage_id) {
+    const row = await queryOne('SELECT js.project_id FROM job_sheet_stages s JOIN job_sheets js ON js.id = s.sheet_id WHERE s.id = ?', [Number(b.job_sheet_stage_id)]);
+    if (row) return row.project_id;
+  }
   if (b.qc_record_id) {
     const row = await queryOne('SELECT project_id FROM qc_records WHERE id = ?', [Number(b.qc_record_id)]);
     if (row) return row.project_id;
@@ -61,17 +65,15 @@ export async function POST(req) {
   if (!String(b.description || '').trim()) {
     return NextResponse.json({ error: 'Description is required' }, { status: 400 });
   }
+  // An NCR raised from an ITP inspection inherits its point and weld.
+  if (b.qc_record_id && !b.job_sheet_stage_id) {
+    const rec = await queryOne('SELECT job_sheet_stage_id, weld_id FROM qc_records WHERE id = ?', [Number(b.qc_record_id)]);
+    if (rec?.job_sheet_stage_id) { b.job_sheet_stage_id = rec.job_sheet_stage_id; b.weld_id = b.weld_id || rec.weld_id; }
+  }
   const projectId = await resolveProjectId(b);
   if (!projectId) return NextResponse.json({ error: "Couldn't determine which project this NCR belongs to" }, { status: 400 });
 
-  // Any link field can be supplied alongside a higher-priority one that actually resolved
-  // projectId (e.g. qc_record_id resolves it, but job_card_id/bom_item_id/work_order_id are also in
-  // the body) — cross-check each supplied one actually belongs to that same project. For
-  // job_card_id this is a real security gap, not just tidiness: without it a client could satisfy
-  // the hold-linkage guard below with an unrelated job card from a different project while the real
-  // held card in this project gets no gating NCR at all (found live: qc-release on the real held
-  // card then succeeded with zero blocking NCR against it). bom_item_id/work_order_id don't gate
-  // anything today but get the same check for the same "never trust the client" reason.
+  // Any link field supplied alongside the one that resolved projectId must belong to the same project.
   if (b.job_card_id) {
     const jc = await queryOne('SELECT project_id FROM job_cards WHERE id = ?', [Number(b.job_card_id)]);
     if (!jc || jc.project_id !== projectId) {
@@ -101,34 +103,30 @@ export async function POST(req) {
     if (dup) return NextResponse.json({ error: `Already covered by NCR #${dup.id}` }, { status: 409 });
   }
 
-  // Hold-point linkage guard (2026-08-23 hardening pass) — qc_records carries no job_card_id column
-  // of its own, so an NCR raised from a failed test (QcPanel's "Raise NCR" button) has no automatic
-  // way to know which held job card, if any, it's about. Rather than silently letting that link go
-  // missing whenever the project actually has a card on hold, require the caller to either name the
-  // affected job_card_id or explicitly confirm the NCR isn't hold-related — real server-side
-  // enforcement, not just a UI nicety (the UI only makes the common no-holds-in-project case fast).
-  if (b.qc_record_id && !b.job_card_id && !b.not_hold_related) {
-    const held = await queryOne(
-      "SELECT id FROM job_cards WHERE project_id = ? AND requires_qc_hold = 1 AND qc_released_at IS NULL LIMIT 1",
-      [projectId]
-    );
-    if (held) {
-      return NextResponse.json({
-        error: 'This project has a job card on QC hold — link this NCR to the affected job card, or confirm it is unrelated.',
-      }, { status: 400 });
+  if (b.job_sheet_stage_id) {
+    const st = await queryOne('SELECT js.project_id FROM job_sheet_stages s JOIN job_sheets js ON js.id = s.sheet_id WHERE s.id = ?', [Number(b.job_sheet_stage_id)]);
+    if (!st || st.project_id !== projectId) return NextResponse.json({ error: "That ITP point is not on this NCR's project" }, { status: 400 });
+    if (b.qc_record_id) {
+      const rec = await queryOne('SELECT job_sheet_stage_id FROM qc_records WHERE id = ?', [Number(b.qc_record_id)]);
+      if (!rec || rec.job_sheet_stage_id !== Number(b.job_sheet_stage_id)) return NextResponse.json({ error: 'That inspection is not on this ITP point' }, { status: 400 });
     }
+  }
+  if (b.weld_id) {
+    const w = await queryOne('SELECT project_id FROM welds WHERE id = ?', [Number(b.weld_id)]);
+    if (!w || w.project_id !== projectId) return NextResponse.json({ error: "That weld is not on this NCR's project" }, { status: 400 });
   }
 
   const ncrNo = await nextNumber('ncr_no', 'NCR');
   const { lastId } = await execute(
     `INSERT INTO ncr_records
        (ncr_no, project_id, qc_record_id, bom_item_id, work_order_id, job_card_id, stock_piece_id,
-        description, severity, raised_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        description, severity, raised_by, job_sheet_stage_id, weld_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [ncrNo, projectId, b.qc_record_id ? Number(b.qc_record_id) : null, b.bom_item_id ? Number(b.bom_item_id) : null,
       b.work_order_id ? Number(b.work_order_id) : null, b.job_card_id ? Number(b.job_card_id) : null,
       b.stock_piece_id ? Number(b.stock_piece_id) : null, String(b.description).trim(),
-      ['minor', 'major', 'critical'].includes(b.severity) ? b.severity : 'minor', user.username]
+      ['minor', 'major', 'critical'].includes(b.severity) ? b.severity : 'minor', user.username,
+      b.job_sheet_stage_id ? Number(b.job_sheet_stage_id) : null, b.weld_id ? Number(b.weld_id) : null]
   );
   const id = Number(lastId);
 

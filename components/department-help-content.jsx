@@ -6,7 +6,7 @@ import {
   BookOpenIcon, MailIcon, ClipboardListIcon, CalculatorIcon, FolderKanbanIcon, FileInputIcon,
   RulerIcon, DraftingCompassIcon, SearchIcon, GitCompareIcon, FileTextIcon, TruckIcon,
   WarehouseIcon, PackageCheckIcon, BoxesIcon, UsersIcon, CalendarDaysIcon, HardHatIcon,
-  FlaskConicalIcon, BadgeCheckIcon, ClipboardCheckIcon, MapPinIcon, RouteIcon, ShoppingCartIcon,
+  FlaskConicalIcon, BadgeCheckIcon, ClipboardCheckIcon, FlameIcon, MapPinIcon, RouteIcon, ShoppingCartIcon,
   UserPlusIcon, Building2Icon, MegaphoneIcon, TrendingUpIcon, PhoneIcon, BarChart3Icon,
   UserRoundIcon, UserCheckIcon, Clock3Icon, IndianRupeeIcon, ReceiptIcon, ShieldCheckIcon,
   ListChecksIcon, MessageSquareIcon, WrenchIcon, BellIcon, TagIcon, InboxIcon, UndoIcon,
@@ -1451,6 +1451,19 @@ const ALL_HELP = {
         'Only the QC Head decides the disposition: Rework, Repair, Scrap (for a tracked stock piece: it is written off) or Use as-is. Scrap and Use as-is need written notes.',
         'After the disposition is carried out, QC clicks Verify, then Close. An NCR can not be closed before it is verified.',
       ]),
+      feature('itp', 'ITP traveler (inspection plan)', ClipboardCheckIcon, [
+        "Add the customer's Inspection & Test Plan once in QC → Inspection Plan → ITP Templates: every point with its section, number, type (R review, W witness, H hold), the earlier points it needs and the test it needs (RT, VT, Hydro…).",
+        'Start a job from it: Job Cards → New Job Card → ITP traveler. The card copies the points, so later edits to the template do not change it.',
+        'A point can not be started, finished or QC-signed while a point it needs is not cleared. "Waiting on" says why (e.g. RT failed on weld L1, NCR open). A witness point needs "Notice sent" before work starts; a hold point needs the customer\'s release (how they authorized it) after QC signs.',
+        'Record an inspection on the point with its measured values. If an acceptance rule exists for the characteristic, pass or fail is set from it; a value in another unit is refused. A decided inspection can not be changed or deleted: record a new one.',
+        'A failed inspection: Raise NCR → QC Head dispositions (a weld repair needs an approved repair WPS) → Production records the repair → QC records a new inspection → Verify → Close. The failed record stays on file.',
+        'Dispatch can not ship a project with an ITP until every point is cleared or marked not applicable (with a reason) and no NCR is open.',
+      ], { outcome: 'Out-of-order work is refused by the system, not only on screen, and every attempt is on record.', watchOut: 'Acceptance limits come from the customer\'s or your licensed code edition; enter each with its source. The app holds no limits of its own.' }),
+      feature('welding', 'Welds, WPS and welders', FlameIcon, [
+        'QC → Inspection Plan → Welding: the weld register per project (joint, category, WPS, welder stamps, NDE methods), the WPS list (a WPS is used only after it is approved, with its PDF) and the welders with their qualified processes.',
+        'Saving a weld updates each welder\'s last weld date, which keeps their continuity current. The register flags a welder not qualified for the WPS process.',
+        'The ASME record package prints welds, WPS, welders and NDE from these registers.',
+      ]),
       feature('heatlot', 'Heat/Lot Traceability', BadgeCheckIcon, [
         'Stores captures a piece\'s heat number and, optionally, a linked test certificate once, at receipt — every piece cut from it afterward inherits both automatically, with no re-entry at cut time.',
         'Linking a certificate through Stores\' picker allocates it to the project the same way linking one in a statutory document does — it shows up as "used on this project" either way.',
@@ -1467,6 +1480,7 @@ const ALL_HELP = {
     howTo: [
       { title: 'Approve a delivery', body: 'Open QC → Approvals → Inward, open the review, inspect the material, and Approve or Reject. Approved material becomes stock; rejected material stays held.' },
       { title: 'Sign job card stages', body: 'Open QC → Approvals → Job Card Stages, inspect each finished stage, and sign it or send it back with a remark.' },
+      { title: 'Run a job on its ITP', body: 'Open QC → Job Cards, open the ITP traveler, and work down the points: Notice sent on witness points, Inspection with measured values where a test is needed, Sign, then Customer release on hold points. A red Waiting on means an earlier point or an open NCR is holding it.' },
       { title: 'Record a test', body: 'Open QC → Test Records, pick the project, add the record under the right card, and set Pass or Fail when the check is done.' },
       { title: 'Raise an NCR', body: 'On a failed row in Test Records click Raise NCR. The QC Head sets the disposition; after the fix, Verify and Close it in QC → NCR.' },
       { title: 'Add a certificate', body: 'Open QC → Test Certificates → Certificates, Add certificate, upload the PDF, check the fields read from it, and save.' },

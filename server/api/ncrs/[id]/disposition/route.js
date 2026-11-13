@@ -33,7 +33,19 @@ export async function POST(req, props) {
 
   let reworkJobCardId = null;
 
-  if (['rework', 'repair'].includes(b.disposition)) {
+  if (['rework', 'repair'].includes(b.disposition) && ncr.job_sheet_stage_id) {
+    // An NCR on an ITP point: Production records the repair (POST .../repair), then QC re-inspects.
+    // A repair on a weld must name an approved repair WPS.
+    let wpsId = b.repair_wps_id ? Number(b.repair_wps_id) : null;
+    if (ncr.weld_id) {
+      if (!wpsId) return NextResponse.json({ error: 'A weld repair needs an approved repair WPS' }, { status: 400 });
+      const w = await queryOne('SELECT status FROM wps WHERE id = ?', [wpsId]);
+      if (!w) return NextResponse.json({ error: 'WPS not found' }, { status: 404 });
+      if (w.status !== 'approved') return NextResponse.json({ error: 'That WPS is not approved yet' }, { status: 409 });
+    }
+    await execute(`UPDATE ncr_records SET status = 'dispositioned', disposition = ?, disposition_notes = ?, repair_wps_id = ?,
+      dispositioned_by = ?, dispositioned_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'open'`, [b.disposition, notes || null, wpsId, user.username, params.id]);
+  } else if (['rework', 'repair'].includes(b.disposition)) {
     if (!ncr.job_card_id) {
       return NextResponse.json({ error: 'Rework/repair requires an NCR linked to a job card' }, { status: 400 });
     }

@@ -10,7 +10,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from '@babel/parser';
 
-const roots = ['app', 'components', 'hooks', 'lib', 'scripts', 'middleware.js', 'next.config.js', 'postcss.config.js'];
+const roots = ['app', 'components', 'hooks', 'lib', 'scripts', 'server', 'middleware.js', 'next.config.js', 'postcss.config.js'];
 const files = [];
 
 function walk(path) {

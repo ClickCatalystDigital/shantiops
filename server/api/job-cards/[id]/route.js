@@ -41,19 +41,6 @@ export async function PATCH(req, props) {
   if (keys.includes('status') && !STATUSES.includes(b.status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
   }
-  // Hold-point gate (plan §5d) — requires_qc_hold is deliberately not in EDITABLE, so Production
-  // can never clear it directly; only POST /api/job-cards/[id]/qc-release can. The block below
-  // doubles as the real "ready for inspection" signal to QC — Production hitting this wall is the
-  // moment the piece is actually done and waiting on QC, not an earlier point in the flow.
-  if (keys.includes('status') && b.status === 'done' && card.requires_qc_hold && !card.qc_released_at) {
-    try {
-      await notifyDepartment('QC', {
-        kind: 'qc_hold', title: `Job card #${params.id} ready for QC hold-point release`,
-        project_id: card.project_id, link: tabLink('/qc', 'holds'), dedupe_key: `qc_hold:${params.id}`,
-      });
-    } catch (err) { /* notification is best-effort */ }
-    return NextResponse.json({ error: 'Held for QC — awaiting QC release' }, { status: 400 });
-  }
   if (b.is_paused && card.status !== 'progress' && b.status !== 'progress') {
     return NextResponse.json({ error: 'Only an in-progress card can be paused' }, { status: 400 });
   }

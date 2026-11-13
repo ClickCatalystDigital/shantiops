@@ -30,49 +30,28 @@ const STATUS_TONE = {
 };
 const DISPOSITION_LABEL = { rework: 'Rework', repair: 'Repair', scrap: 'Scrap', use_as_is: 'Use as-is' };
 
-// Reusable raise dialog — pass whichever single link this NCR is against (qcRecordId, jobCardId,
-// bomItemId, workOrderId, or a bare projectId for a field-found defect with no upstream link yet).
-//
-// showHoldPicker (2026-08-23 hardening pass): pass true when raising from a failed qc_record
-// (QcPanel) — qc_records carries no job_card_id of its own, so there's no automatic way to know
-// which held job card, if any, a failed test is actually about. When the project has one, the
-// picker forces an explicit choice (the affected card, or "not related") rather than letting that
-// link go silently missing; POST /api/ncrs enforces this same requirement server-side regardless of
-// what the UI does. Not needed when jobCardId is already known (raised from JobCardBoard itself).
-export function RaiseNcrDialog({ open, onOpenChange, projectId, qcRecordId, jobCardId, bomItemId, workOrderId, showHoldPicker = false, onRaised }) {
+// Reusable raise dialog — pass whichever link this NCR is against (an ITP point + weld, a failed
+// inspection, a job card, a BOM line, a work order, or a bare projectId for a field-found defect).
+// The server derives the project from the link and checks every link belongs to it.
+export function RaiseNcrDialog({ open, onOpenChange, projectId, qcRecordId, jobCardId, bomItemId, workOrderId, stageId, weldId, defaultDescription = '', onRaised }) {
   const router = useRouter();
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(defaultDescription);
   const [severity, setSeverity] = useState('minor');
   const [busy, setBusy] = useState(false);
-  const [heldCards, setHeldCards] = useState(null); // null = not loaded yet, [] = none held
-  const [pickedCardId, setPickedCardId] = useState(''); // '' unset, 'none' = not hold-related, else a job_card_id string
-
-  useEffect(() => {
-    if (!open || !showHoldPicker || !projectId) return;
-    setHeldCards(null);
-    setPickedCardId('');
-    api(`/api/job-cards?project_id=${projectId}`)
-      .then(cards => setHeldCards(cards.filter(c => c.requires_qc_hold && !c.qc_released_at)))
-      .catch(() => setHeldCards([])); // best-effort — a fetch failure shouldn't block raising an unrelated NCR
-  }, [open, showHoldPicker, projectId]);
-
-  const needsPick = showHoldPicker && heldCards && heldCards.length > 0;
+  useEffect(() => { if (open) setDescription(defaultDescription); }, [open, defaultDescription]);
 
   async function submit() {
     if (!description.trim()) return showToast('Description is required', 'error');
-    if (needsPick && !pickedCardId) return showToast('Select the affected job card, or confirm this is not hold-related', 'error');
     setBusy(true);
     try {
-      await api('/api/ncrs', {
+      const r = await api('/api/ncrs', {
         method: 'POST',
         body: {
-          project_id: projectId, qc_record_id: qcRecordId,
-          job_card_id: jobCardId || (pickedCardId && pickedCardId !== 'none' ? Number(pickedCardId) : undefined),
-          not_hold_related: pickedCardId === 'none' || undefined,
+          project_id: projectId, qc_record_id: qcRecordId, job_card_id: jobCardId, job_sheet_stage_id: stageId, weld_id: weldId,
           bom_item_id: bomItemId, work_order_id: workOrderId, description, severity,
         },
       });
-      showToast('NCR raised');
+      showToast(`${r.ncr_no} raised`);
       setDescription(''); setSeverity('minor');
       onOpenChange(false);
       await onRaised?.();
@@ -101,24 +80,9 @@ export function RaiseNcrDialog({ open, onOpenChange, projectId, qcRecordId, jobC
               </SelectContent>
             </Select>
           </div>
-          {needsPick && (
-            <div className="flex flex-col gap-1.5">
-              <Label>Which job card does this affect? <span className="text-danger">*</span></Label>
-              <Select value={pickedCardId} onValueChange={setPickedCardId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Select one" /></SelectTrigger>
-                <SelectContent>
-                  {heldCards.map(c => (
-                    <SelectItem key={c.id} value={String(c.id)}>#{c.id} · {c.section}{c.wo_no ? ` · ${c.wo_no}` : ''}</SelectItem>
-                  ))}
-                  <SelectItem value="none">Not related to a hold</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">This project has a job card on QC hold — link this NCR if it's the reason, so the hold can't be released around it.</p>
-            </div>
-          )}
         </div>
         <DialogFooter>
-          <Button disabled={busy || (showHoldPicker && heldCards === null)} onClick={submit}>{busy ? 'Raising…' : 'Raise NCR'}</Button>
+          <Button disabled={busy} onClick={submit}>{busy ? 'Raising…' : 'Raise NCR'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -126,17 +90,23 @@ export function RaiseNcrDialog({ open, onOpenChange, projectId, qcRecordId, jobC
 }
 
 function DispositionDialog({ ncr, onClose, router }) {
-  const [disposition, setDisposition] = useState('rework');
+  const canRework = !!(ncr.job_card_id || ncr.job_sheet_stage_id);
+  const [disposition, setDisposition] = useState(canRework ? 'repair' : 'scrap');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [wpsList, setWpsList] = useState([]);
+  const [wpsId, setWpsId] = useState('');
   const notesRequired = ['scrap', 'use_as_is'].includes(disposition);
+  const needsWps = !!ncr.weld_id && ['rework', 'repair'].includes(disposition);
+  useEffect(() => { if (ncr.weld_id) api('/api/wps').then(l => setWpsList(l.filter(w => w.status === 'approved'))).catch(() => {}); }, [ncr.weld_id]);
 
   async function submit() {
     if (notesRequired && !notes.trim()) return showToast('Notes are required for scrap / use-as-is', 'error');
+    if (needsWps && !wpsId) return showToast('Pick the approved repair WPS', 'error');
     setBusy(true);
     try {
       await api(`/api/ncrs/${ncr.id}/disposition`, {
-        method: 'POST', body: { disposition, disposition_notes: notes },
+        method: 'POST', body: { disposition, disposition_notes: notes, repair_wps_id: needsWps ? Number(wpsId) : undefined },
       });
       showToast('NCR dispositioned');
       onClose();
@@ -156,7 +126,7 @@ function DispositionDialog({ ncr, onClose, router }) {
             <Select value={disposition} onValueChange={setDisposition}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {!ncr.job_card_id ? null : (
+                {!canRework ? null : (
                   <>
                     <SelectItem value="rework">Rework</SelectItem>
                     <SelectItem value="repair">Repair</SelectItem>
@@ -167,6 +137,15 @@ function DispositionDialog({ ncr, onClose, router }) {
               </SelectContent>
             </Select>
           </div>
+          {needsWps && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Repair WPS (approved) <span className="text-danger">*</span></Label>
+              <Select value={wpsId} onValueChange={setWpsId}>
+                <SelectTrigger className="w-full"><SelectValue placeholder={wpsList.length ? 'Select a WPS' : 'No approved WPS yet'} /></SelectTrigger>
+                <SelectContent>{wpsList.map(w => <SelectItem key={w.id} value={String(w.id)}>{w.wps_no} · {w.process}{w.is_repair ? ' · repair' : ''}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label>Notes {notesRequired && <span className="text-danger">*</span>}</Label>
             <Textarea value={notes} onChange={e => setNotes(e.target.value)} />
@@ -227,6 +206,15 @@ export default function NcrPanel({ ncrs = [], canDisposition = false, canVerify 
               <span className="ml-auto text-xs text-muted-foreground tnum">{formatDate(n.raised_at)}</span>
             </div>
             <p className="text-muted-foreground">{n.description}</p>
+            {(n.point_key || n.weld_no) && (
+              <p className="text-xs text-muted-foreground">
+                {n.point_key && <>ITP point {n.point_key} {n.point_name} ({n.point_jc_no})</>}{n.weld_no && <> · weld {n.weld_no}</>}
+                {n.repair_wps_no && <> · repair WPS {n.repair_wps_no}</>}
+              </p>
+            )}
+            {n.job_sheet_stage_id && ['rework', 'repair'].includes(n.disposition) && (
+              <p className="text-xs">{n.repair_at ? <>Repair recorded by {n.repair_by}: {n.repair_notes}</> : <span className="text-warning">Waiting for Production to record the repair</span>}</p>
+            )}
             <RelatedItemsCard type="ncr" id={n.id} className="flex flex-col gap-1" />
             {canDisposition && n.status === 'open' && (
               <Button size="sm" variant="outline" className="self-start" onClick={() => setDispositioning(n)}>Disposition</Button>

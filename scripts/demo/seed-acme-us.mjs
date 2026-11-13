@@ -23,6 +23,8 @@ import { readFileSync } from 'node:fs';
 const { DB_URL, DB_TOKEN, BASE = 'http://localhost:8790', ADMIN_PASSWORD, DEMO_PASSWORD = 'acme-demo' } = process.env;
 if (!DB_URL || !ADMIN_PASSWORD) throw new Error('DB_URL and ADMIN_PASSWORD are required');
 const db = createClient({ url: DB_URL, authToken: DB_TOKEN || undefined, intMode: 'number' });
+// ponytail: a local SQLite file is shared with the running app; wait instead of failing on its write lock.
+if (DB_URL.startsWith('file:')) await db.execute('PRAGMA busy_timeout = 15000');
 const COMPANY = 'Acme Boilers';
 const q = async (sql, args = []) => (await db.execute({ sql, args })).rows;
 
@@ -476,6 +478,59 @@ async function handOver(project) {
   await api('POST', '/api/production/handovers', { items: project.lines.filter(l => l.mfg).map(l => ({ bom_item_id: l.id, qty: l.qty })), note: 'Shell, tubes and body complete', approve: true });
 }
 
+// --- Inspection plan (docs/gulf-coast-asme-plan.md): WPS, welders, an example ITP and an acceptance rule ------
+// The demo's own example plan for a firetube boiler (made up, not a customer document).
+const ITP_EXAMPLE = [
+  ['1 Specification', '1.1', 'Purchase order and specifications', 'TRV', 'R', '', 'q', ''],
+  ['1 Specification', '1.2', 'Design calculations', 'TRV', 'R', '', 'q', ''],
+  ['1 Specification', '1.3', 'General arrangement drawing', 'TRV', 'R', '', 'q', ''],
+  ['1 Specification', '1.4', 'WPS / PQR and weld map', 'TRV', 'H', '', 'q', '1.3'],
+  ['2 Material', '2.1', 'Material receiving: VT and dimensions against PO and BOM', 'DWG', 'R', '', '', ''],
+  ['2 Material', '2.2', 'Mill test reports reviewed against the specification', 'DCU', 'R', '', 'q', ''],
+  ['2 Material', '2.3', 'Heat number transfer to cut pieces', 'DWG', 'R', '', '', '2.2'],
+  ['3 Fit-up', '3.1', 'Shell long seam fit-up: alignment, WPS', 'TRV', 'W', '', '', '1.4,2.2'],
+  ['3 Fit-up', '3.2', 'Tubesheet to shell fit-up', 'TRV', 'H', '', '', '1.4,2.2'],
+  ['3 Fit-up', '3.3', 'Root pass / back-gouge: VT', 'TRV', 'W', '', '', '3.1'],
+  ['4 Welding & NDE', '4.1', 'Final weld visual inspection, 100%', 'NDE', 'H', 'VT', 'w', '3.3'],
+  ['4 Welding & NDE', '4.2', 'Radiography', 'NDE', 'H', 'RT', 'w', '4.1'],
+  ['4 Welding & NDE', '4.3', 'Tube installation and expansion', 'DWG', 'W', '', '', '4.2'],
+  ['4 Welding & NDE', '4.4', 'Nozzles and attachments fit-up', 'TRV', 'W', '', '', '1.4'],
+  ['5 Testing', '5.1', 'Hydrostatic test', 'DCU', 'H', 'Hydro Test', '', '4.2,4.3,4.4'],
+  ['5 Testing', '5.2', 'Final dimensional and visual inspection', 'DWG', 'H', '', '', '5.1'],
+  ['6 Shipping', '6.1', 'Painting', 'DCU', 'R', '', '', '5.1'],
+  ['6 Shipping', '6.2', 'Code nameplate stamping', 'DCU', 'H', '', '', '5.2'],
+  ['6 Shipping', '6.3', 'Final inspection release', 'DCU', 'H', '', 'q', '6.1,6.2'],
+  ['7 Records', '7.1', 'Data report and record package', 'DCU', 'H', '', 'qa', '6.3'],
+].map(([section, item_key, name, doc_code, point_type, test_type, f, requires]) => ({ section, item_key, name, doc_code, point_type, test_type,
+  requires, per_weld: f.includes('w') ? 1 : 0, qc_only: f.includes('q') ? 1 : 0, after_dispatch: f.includes('a') ? 1 : 0 }));
+const welding = {};
+async function seedInspectionPlan() {
+  for (const [wps_no, process, pqr_no, is_repair] of [['WPS-101', 'SAW', 'PQR-101', 0], ['WPS-102', 'SMAW', 'PQR-102', 0], ['WPS-103R', 'SMAW', 'PQR-102', 1]]) {
+    const w = await api('POST', '/api/wps', { wps_no, process, pqr_no, base_metal: 'P-No. 1 to P-No. 1', thickness: '1/16" to 1-1/4"', pwht: 'Not required up to 3/4"', is_repair });
+    welding[wps_no] = w.id;
+  }
+  // Approval needs the signed PDF; the demo has no file storage, so the approval is written directly.
+  await q("UPDATE wps SET status = 'approved', approved_by = 'qc_head', approved_at = ?", [stamp(-200)]);
+  for (const [name, stamp_] of Object.entries(STAMP)) {
+    await api('POST', '/api/welders', { stamp: stamp_, name, wpq_no: `WPQ-${stamp_.slice(2)}`,
+      processes: { SAW: { qualified_on: iso(-900), last_weld: iso(-90) }, SMAW: { qualified_on: iso(-1100), last_weld: iso(-90) } } });
+  }
+  welding.template = (await api('POST', '/api/itp-templates', { name: 'Firetube boiler ITP (example)', revision: '0', items: ITP_EXAMPLE })).id;
+  await api('POST', '/api/acceptance-rules', { characteristic: 'Hardness', unit: 'HBW', max: 200, max_inclusive: true,
+    source: 'Example purchaser specification (demo data, not a code limit)' });
+}
+// The project's weld register, from the same welds its record package lists. Each weld also needs a visual.
+async function seedWelds(project, data, daysAgo) {
+  const ids = {};
+  for (const w of data.welds) {
+    const nde = [w.nde.split(' ')[0], 'VT'].join(',');
+    const r = await api('POST', '/api/welds', { project_id: project.id, weld_no: w.id, joint: w.joint, category: w.category, type: w.type,
+      wps_id: welding[w.wps], welder_stamps: w.welders.join(','), nde, welded_on: iso(-daysAgo) });
+    ids[w.id] = r.id;
+  }
+  return ids;
+}
+
 // The ASME record package behind a job's data report (lib/qc-asme.mjs has the shape): stamps, the Authorized Inspector,
 // WPS/PQR, the two welders' continuity (last welds within six months), the weld map, NDE, PWHT and the hydro test.
 function asmeData(project, htDate) {
@@ -556,7 +611,9 @@ async function qcDocs(project) {
     heating_surface: project.vessel ? '' : Math.round(hp * 5 * 0.0929), evaporation_capacity: project.vessel ? '' : cap, steam_temp: project.vessel ? 121 : 186,
     drawing_no: `${project.no}-GA-01`, signer_name: 'Diane Morgan',
   });
-  await q('UPDATE qc_documents SET asme_data = ? WHERE id = ?', [JSON.stringify(asmeData(project, htDate)), doc.id]);
+  const asme = asmeData(project, htDate);
+  await q('UPDATE qc_documents SET asme_data = ? WHERE id = ?', [JSON.stringify(asme), doc.id]);
+  await seedWelds(project, asme, project.orderAgo - 68);
   const parts = (await q('SELECT id FROM qc_document_parts WHERE document_id = ?', [doc.id])).map(r => r.id);
   if (parts.length && certs.length) await api('POST', `/api/qc-documents/${doc.id}/link-parts`, { part_ids: parts, test_certificate_id: certs[0] });
   // Bought-out items (valves, gauges): pulled from the BOM and covered by the makers' certificate.
@@ -765,6 +822,7 @@ await login();
 await seedPeople();
 await seedMasters();
 await seedStock();
+await seedInspectionPlan();
 await seedPipeline();
 
 const p1 = await createProject('AB-1001', 'Great Lakes Dairy Cooperative', 'AB-FT-150', 150, 'Exhibition');
@@ -813,6 +871,40 @@ await api('PATCH', `/api/job-cards/${rework.id}`, { status: 'progress' });
 await api('PATCH', `/api/job-cards/${rework.id}`, { status: 'done', qty_done: 1, qty_rejected: 0 });
 await q("UPDATE job_cards SET updated_at = ? WHERE id IN (?, ?)", [stamp(-5), drill.id, rework.id]);
 await jobSheet(p5, { signed: 10 }); // rolling and fit-up signed, RC tubesheet fit-up waiting for QC, shell welding started
+// AB-1005's ITP traveler: specification, material and fit-up points cleared (hold points released by the
+// customer); final visual passed on every weld; radiography passed on C2 but FAILED on L1, so an NCR is open and
+// tube expansion, the hydrostatic test and everything after them are blocked until the repair is re-radiographed.
+{
+  const welds5 = await seedWelds(p5, asmeData(p5, iso(0)), 12);
+  const itp = await api('POST', '/api/job-sheets', { job_number: `${p5.no}-ITP`, project_id: p5.id, itp_template_id: welding.template,
+    customer_po: `PO-GF-${p5.id}417`, item_number: '1', drawing_approved_on: iso(-p5.orderAgo + 20) });
+  const { stages } = await api('GET', `/api/job-sheets/${itp.id}`);
+  const st = k => stages.find(x => x.item_key === k);
+  const at = (k, body) => api('PATCH', `/api/job-sheets/${itp.id}/stages/${st(k).id}`, body);
+  const work = async (k, d) => { await at(k, { action: 'start', date: iso(d) }); await at(k, { action: 'finish', date: iso(d) }); };
+  const sign = (k, d) => at(k, { action: 'qc', date: iso(d), inspection_date: iso(d) });
+  const release = (k, ref) => at(k, { action: 'release', release_ref: ref });
+  for (const k of ['1.1', '1.2', '1.3', '1.4', '2.2']) await sign(k, -30);
+  await release('1.4', 'Signed ITP and weld map returned by Greenfield Foods (email, R. Hale)');
+  for (const k of ['2.1', '2.3']) { await work(k, -28); await sign(k, -28); }
+  await at('3.1', { action: 'notify' }); await work('3.1', -20); await sign('3.1', -20);
+  await work('3.2', -18); await sign('3.2', -18); await release('3.2', 'Witnessed by J. Peterson (customer inspector) on site');
+  await at('3.3', { action: 'notify' }); await work('3.3', -16); await sign('3.3', -16);
+  await work('4.1', -12);
+  for (const [no, id] of Object.entries(welds5)) {
+    await api('POST', '/api/qc-records', { project_id: p5.id, job_sheet_stage_id: st('4.1').id, weld_id: id, test_type: 'VT', result: 'pass',
+      tested_on: iso(-12), inspector: 'Diane Morgan', reference_no: `VT-${p5.no}-${no}` });
+  }
+  await sign('4.1', -11); await release('4.1', 'Customer inspector accepted VT report by email');
+  await work('4.2', -9);
+  await api('POST', '/api/qc-records', { project_id: p5.id, job_sheet_stage_id: st('4.2').id, weld_id: welds5.C2, test_type: 'RT', result: 'pass',
+    tested_on: iso(-8), inspector: 'B. Kaminski (Level II)', reference_no: `RT-${p5.no}-2` });
+  const rt = await api('POST', '/api/qc-records', { project_id: p5.id, job_sheet_stage_id: st('4.2').id, weld_id: welds5.L1, test_type: 'RT', result: 'fail',
+    tested_on: iso(-8), inspector: 'B. Kaminski (Level II)', reference_no: `RT-${p5.no}-1`, notes: 'Slag inclusion, 3/8" long, 14" from the start of L1' });
+  await api('POST', '/api/ncrs', { qc_record_id: rt.id, severity: 'major', description: 'L1 shell long seam: slag inclusion on radiograph RT-AB-1005-1. Excavate, re-weld to WPS-103R and re-radiograph.' });
+  await at('4.4', { action: 'notify' }); await at('4.4', { action: 'start', date: iso(-4) });
+  await q("UPDATE welders SET processes_json = json_set(processes_json, '$.SMAW.last_weld', ?) WHERE stamp = 'W-12'", [iso(-4)]);
+}
 await workOrder(p5, [...cards5, rework.id], 'in_progress');
 // Material Utilization: a 10 mm plate cut for AB-1005's saddles, the off-cut kept as a remnant.
 // Stored metric: a 3/8" x 60" x 240" plate.

@@ -196,7 +196,6 @@ const ACT_NEW = [
   ['NCR-1001: use as is', '/qc', 'disposition_ncr'], ['the porosity NCR on AB-1005 needs rework', '/', 'disposition_ncr'],
   ['verify NCR-1001', '/qc', 'verify_ncr'], ['QC checked the rework on NCR-1001, it is fine now', '/', 'verify_ncr'],
   ['close NCR-1001', '/qc', 'close_ncr'], ['NCR-1001 is verified, close it', '/', 'close_ncr'],
-  ['release JC-1025 from QC hold', '/qc', 'qc_release_job_card'], ['QC has checked job card JC-1025, let production continue', '/', 'qc_release_job_card'],
   ['Ramesh Kumar worked 2 hours on JC-1024', '/production/shop', 'log_job_card_time'], ['log 45 minutes by Suresh Yadav on job card JC-1026', '/', 'log_job_card_time'],
   ['Suresh Yadav is present today on the shop floor', '/production/shop', 'mark_worker_day'], ['mark welder Mahesh Pawar half day on the daily sheet', '/', 'mark_worker_day'],
   ['make a packing list for AB-1005', '/dispatch', 'create_packing_from_bom'], ['generate the packing list from the BOM for AB-1004', '/', 'create_packing_from_bom'],

@@ -19,7 +19,6 @@ INSERT INTO service_expense_requests (req_no, kind, status, requested_by, reques
   ('CR-9001', 'cash', 'pending_manager', 'service_head', 'Service Head', '2026-11-01', 5000),
   ('CR-9002', 'cash', 'pending_executive', 'service_head', 'Service Head', '2026-11-02', 3000),
   ('CR-9003', 'cash', 'with_accounts', 'service_head', 'Service Head', '2026-11-03', 2000);
-UPDATE job_cards SET requires_qc_hold = 1, qc_released_at = NULL WHERE jc_no = 'JC-1025';
 INSERT INTO stock_pieces (inventory_item_id, code, kind, length_mm, width_mm, thickness_mm, weight_kg, status, source)
   SELECT inventory_item_id, 'PL-H10M2201-001-R9', 'plate', 500, 400, 10, 15.7, 'pending_receipt', 'remnant' FROM stock_pieces WHERE code = 'PL-H10M2201-001-R1';
 INSERT INTO stock_pieces (inventory_item_id, code, kind, length_mm, width_mm, thickness_mm, weight_kg, status, source)
@@ -128,7 +127,6 @@ const CASES = [
   { action: 'disposition_ncr', text: 'NCR-1001: use as is', expect: { ncr_id: /NCR-1001/, disposition: 'use_as_is' }, fix: { disposition_notes: 'Within tolerance after review' }, as: 'qc_head' },
   { action: 'verify_ncr', text: 'verify NCR-1001', expect: { ncr_id: /NCR-1001/ }, as: 'qc_head' },
   { action: 'close_ncr', text: 'close NCR-1001', expect: { ncr_id: /NCR-1001/ }, as: 'qc_head' },
-  { action: 'qc_release_job_card', text: 'release JC-1025 from QC hold', expect: { job_card_id: /JC-1025/ }, as: 'qc_head' },
   { action: 'log_job_card_time', text: 'Ramesh Kumar worked 2 hours on JC-1024', expect: { job_card_id: /JC-1024/, employee_id: /Ramesh/, minutes: 120 }, as: 'production_head' },
   { action: 'mark_worker_day', text: 'Suresh Yadav is present today', expect: { employee_id: /Suresh/, status: 'present' }, as: 'production_head' },
   { action: 'create_packing_from_bom', text: 'make a packing list for AB-1005', expect: { project_id: /AB-1005/ }, as: 'dispatch_head' },

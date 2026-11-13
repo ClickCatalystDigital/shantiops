@@ -11,6 +11,7 @@ import { notifyUser, notifyDepartmentHeads } from '@/lib/notify';
 import { dissolveSmallShipments } from '@/lib/shipments';
 import { cleanTrackingUrl } from '@/lib/carrier.mjs';
 import { tabLink } from '@/lib/alert-links.mjs';
+import { shippingBlockers } from '@/lib/quality';
 
 const EDITABLE = ['customer_name', 'customer_address', 'invoice_no', 'invoice_date', 'package_type',
   'dc_no', 'dc_date', 'vehicle_no', 'dispatch_through', 'contact_person', 'status',
@@ -82,6 +83,12 @@ export async function PATCH(req, props) {
       'SELECT status FROM pre_dispatch_approvals WHERE packing_list_id = ? ORDER BY id DESC LIMIT 1', [params.id]);
     if (latest?.status !== 'approved') {
       return NextResponse.json({ error: 'Held for QC/Production final review — submit for approval and get both sign-offs before dispatching.' }, { status: 400 });
+    }
+    // ITP gate (docs/gulf-coast-asme-plan.md): nothing ships while a point of the project's ITP is open
+    // or an NCR is not closed. Projects without an ITP card are not affected.
+    const open = await shippingBlockers(pl.project_id);
+    if (open.length) {
+      return NextResponse.json({ error: `Cannot ship yet: ${open.slice(0, 5).join('; ')}${open.length > 5 ? ` and ${open.length - 5} more` : ''}` }, { status: 409 });
     }
   }
 

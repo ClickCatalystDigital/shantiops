@@ -13,7 +13,9 @@ export async function POST(req, props) {
   const b = await req.json();
   const name = String(b.name || '').trim().toUpperCase();
   if (!name) return NextResponse.json({ error: 'Stage name is required' }, { status: 400 });
-  if (!(await queryOne('SELECT 1 FROM job_sheets WHERE id = ?', [id]))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const sheet = await queryOne('SELECT itp_template_id FROM job_sheets WHERE id = ?', [id]);
+  if (!sheet) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (sheet.itp_template_id) return NextResponse.json({ error: 'ITP points come from the template: change the template for new jobs' }, { status: 409 });
   const { n } = await queryOne('SELECT COALESCE(MAX(sort_order), 0) AS n FROM job_sheet_stages WHERE sheet_id = ?', [id]);
   await execute('INSERT INTO job_sheet_stages (sheet_id, sort_order, name, group_key) VALUES (?, ?, ?, ?)',
     [id, Number(n) + 1, name, b.group_key || null]);

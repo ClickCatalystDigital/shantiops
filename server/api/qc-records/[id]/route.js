@@ -40,6 +40,17 @@ export async function PATCH(req, props) {
     return NextResponse.json({ error: 'Invalid result' }, { status: 400 });
   }
 
+  // An inspection on an ITP point is a fact once decided: a retest is a new record, never an edit.
+  if (record.job_sheet_stage_id) {
+    if (record.result !== 'pending' && (keys.includes('result') || keys.includes('test_type'))) {
+      return NextResponse.json({ error: 'This inspection is decided and kept as recorded — record a new inspection' }, { status: 409 });
+    }
+    if (keys.includes('test_type')) return NextResponse.json({ error: 'Test type is fixed on an ITP inspection' }, { status: 409 });
+    if (keys.includes('result') && b.result === 'pass') {
+      const bad = await queryOne("SELECT 1 FROM qc_measurements WHERE qc_record_id = ? AND verdict = 'fail'", [record.id]);
+      if (bad) return NextResponse.json({ error: 'A measured value is outside its acceptance rule: this inspection cannot pass' }, { status: 409 });
+    }
+  }
   const changed = {};
   for (const k of keys) {
     if (k === 'dispatch_eligible') { changed[k] = b[k] ? 1 : 0; continue; }
@@ -93,6 +104,12 @@ export async function DELETE(req, props) {
     if (actionDenied) return actionDenied;
   }
 
+  if (record.job_sheet_stage_id && record.result !== 'pending') {
+    return NextResponse.json({ error: 'A decided ITP inspection is kept as recorded' }, { status: 409 });
+  }
+  if (await queryOne('SELECT 1 FROM qc_records WHERE supersedes_id = ? UNION SELECT 1 FROM ncr_records WHERE qc_record_id = ?', [record.id, record.id])) {
+    return NextResponse.json({ error: 'A later inspection or an NCR refers to this record' }, { status: 409 });
+  }
   await execute('DELETE FROM qc_records WHERE id = ?', [params.id]);
   await audit('qc_record_delete', {
     actor: user.username,

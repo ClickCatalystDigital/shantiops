@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, isDepartmentHead, roleHome } from '@/lib/auth';
 import { canPerformAction } from '@/lib/action-permissions';
-import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getReleasedBomProjectIds, getAllocatedChildProjectIds, getNcrs, getQcHoldPoints, getPendingInwardApprovals, getPendingPreDispatchApprovals, getPendingJobSheetStages, getQcRecords, getJobWorkInspections, getWorkOrders, getBomAssembliesFlat, getMilestoneIdByKey, getExtraDocSeriesByProject } from '@/lib/data';
+import { getTestCertificates, getAllQcDocuments, getActiveProjectsList, getCalibrationItems, getReceivedProjectIds, getReleasedBomProjectIds, getAllocatedChildProjectIds, getNcrs, getPendingInwardApprovals, getPendingPreDispatchApprovals, getPendingJobSheetStages, getQcRecords, getJobWorkInspections, getWorkOrders, getBomAssembliesFlat, getMilestoneIdByKey, getExtraDocSeriesByProject } from '@/lib/data';
 import QcWorkspace from '@/components/QcWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +13,7 @@ export default async function QcPage({ searchParams }) {
   if (!canAccessDepartment(user, 'QC')) redirect(roleHome(user));
 
   const sp = await searchParams;
-  const [allProjects, certificates, documents, calibrationItems, receivedIds, releasedBomIds, allocatedChildIds, ncrs, holdPoints, canDisposition, canVerify, canClose, inwardApprovals, preDispatchApprovals, jobSheetStages] = await Promise.all([
+  const [allProjects, certificates, documents, calibrationItems, receivedIds, releasedBomIds, allocatedChildIds, ncrs, canDisposition, canVerify, canClose, canItp, canWeld, canWpsApprove, canRules, inwardApprovals, preDispatchApprovals, jobSheetStages] = await Promise.all([
     // QC is the one deliberate exception to getActiveProjectsList()'s master-only default — real QC
     // documents are created per split-child unit, so QC's own picker needs children visible.
     getActiveProjectsList({ includeChildren: true, includeClosed: true }),
@@ -24,10 +24,13 @@ export default async function QcPage({ searchParams }) {
     getReleasedBomProjectIds(), // ponytail: TEMPORARY — see lib/data.js
     getAllocatedChildProjectIds(),
     getNcrs(),
-    getQcHoldPoints(),
     canPerformAction(user, 'QC', 'qc.ncr.disposition'),
     canPerformAction(user, 'QC', 'qc.ncr.verify'),
     canPerformAction(user, 'QC', 'qc.ncr.close'),
+    canPerformAction(user, 'QC', 'qc.itp.template'),
+    canPerformAction(user, 'QC', 'qc.weld.write'),
+    canPerformAction(user, 'QC', 'qc.wps.approve'),
+    canPerformAction(user, 'QC', 'qc.rule.write'),
     // Inward + Pre-Dispatch QC/Production Approval Workflow — QC's own department-local Approvals
     // tab (superseded the shared /material-review route). Both queues are unfiltered reads; every
     // write route re-enforces the real decide authority server-side via requireAction.
@@ -85,8 +88,8 @@ export default async function QcPage({ searchParams }) {
     : [[], [], [], [], null];
 
   return <QcWorkspace projects={projects} certificates={certificates} documents={documents}
-    calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints} splitOrders={splitOrders} extraDocs={extraDocs}
-    canDisposition={canDisposition} canVerify={canVerify} canClose={canClose}
+    calibrationItems={calibrationItems} ncrs={ncrs} splitOrders={splitOrders} extraDocs={extraDocs}
+    canDisposition={canDisposition} canVerify={canVerify} canClose={canClose} canItp={canItp} canWeld={canWeld} canWpsApprove={canWpsApprove} canRules={canRules}
     inwardApprovals={inwardApprovals} preDispatchApprovals={preDispatchApprovals}
     canDecideInward={isDepartmentHead(user, 'QC')} canDecideQcPreDispatch={isDepartmentHead(user, 'QC')}
     testRecords={testRecords} jobWorkInspections={jobWorkInspections} workOrders={workOrders}

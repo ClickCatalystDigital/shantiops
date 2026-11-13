@@ -7,6 +7,7 @@ import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, canAccessDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
+import { ncrRetestState } from '@/lib/quality';
 
 export async function POST(req, props) {
   const params = await props.params;
@@ -27,6 +28,11 @@ export async function POST(req, props) {
     if (!card || card.status !== 'done') {
       return NextResponse.json({ error: 'Rework job card is not finished yet' }, { status: 400 });
     }
+  }
+
+  if (ncr.job_sheet_stage_id) {
+    const why = await ncrRetestState(ncr);
+    if (why) return NextResponse.json({ error: why }, { status: 409 });
   }
 
   await execute(
