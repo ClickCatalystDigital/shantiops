@@ -129,6 +129,35 @@ VIII "U" stamp, deposit only), AB-1004 Northstar Paper Mills (350 HP, procuremen
 production/QC, failed stay-tube lot + NCR). Item master: the cleaned US catalogue (`scripts/demo/us-items.json`, rebuilt by
 `us-items.mjs` from `~/Developer/items/ahrom_usd/us_boiler_master_catalog.json`: standard pipe ODs, no synthetic aliases).
 
+### QA/QC walkthrough (ITP, MTRs, Data Book)
+
+Built for the heat-exchanger QA/QC video (docs/gulf-coast-asme-plan.md). Sample files to drag in are in
+`scripts/demo/us-sample-docs/` (fictional, marked SAMPLE; rebuild with `node scripts/demo/make-us-sample-docs.mjs`).
+Uploads in the public demo work only with the owner pass (`#pass=…`); visitors get "File uploads are turned off".
+
+1. **QC → Inspection Plan → ITP Templates**: the firetube example and three exchanger ITPs (Exchanger 60 points,
+   Bundle Only 25, Parts Only 55). Open one: R/W/H types, the earlier points each needs, the test each needs.
+   **Import** takes a JSON file (preview first).
+2. **QC → Job Cards → JC for AB-1005 (ITP traveler)**: sections 1–3 cleared, VT passed on every weld, **RT failed on
+   weld L1**, NCR open. Points 4.3, 5.1 and everything after show the reason in red. Start on 4.3 is refused by the
+   server, not just the screen.
+3. The fix, in order: **NCR → Disposition** (QC head, repair, WPS-103R) → **Record repair** (switch to the Production
+   role) → **Inspection** on 4.2 for weld L1, RT pass → **Verify** → **Close** → **QC sign** 4.2 → **Customer release**
+   (how the customer authorized it). 4.3 opens once its witness notice is recorded. The failed RT stays on file.
+4. **QC → Inspection Plan → Welding**: AB-1005's weld register (WPS, welder stamps, NDE), WPS with PDFs, welders with
+   continuity and WPQ PDFs. **Acceptance Rules**: Hardness ≤ 200 HBW with its source; an inspection value above it
+   is failed automatically.
+5. **QC → Test Certificates → Batch upload**: drop the three MTR PDFs and the packing slip. Each MTR is read into one
+   line per heat (the packing slip is flagged "Not an MTR"); dropping the same file again shows Duplicate. **Review**:
+   PDF beside the heats, units as printed (ksi / psi), Accept.
+6. **Trace**: type `H21A` (AB-1001 shell plate): certificate → BOM line → welds L1, C1, C2, C3, N1–N3 → QC document.
+   Pick AB-1001 in the header for every heat it used and the **Material Trace Map** PDF.
+7. **QC → Data Book → AB-1001** (shipped job): 16 lines filled from the records, 8 N/A with reasons, **Nameplate
+   missing**, so Release is disabled and says why. Upload `Nameplate-AB-1001.pdf` to that line → **Preview** (cover,
+   contents with page numbers, bookmarks, PRELIMINARY stamp) → **Release** (QC head) → Revision 1 stored with its
+   SHA-256; it never changes.
+8. Shipping: a packing list for AB-1005 can't be dispatched while its ITP or an NCR is open (Dispatch shows why).
+
 Infrastructure: Worker `sb-ops-boiler-erp-demo-us` (`wrangler.us.jsonc`, `npm run deploy:demo:us`), Turso `sb-us-demo` /
 `sb-us-demo-golden` in the `sbdemo` group, leads database shared with the Indian demo, reset Worker
 `sb-ops-boiler-erp-demo-us-reset` (`workers/demo-reset-cron/wrangler.us.jsonc`, 03:00 US Central, `TIME_ZONE`).

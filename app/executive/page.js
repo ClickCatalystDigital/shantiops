@@ -1,4 +1,4 @@
-import { CURRENCY_SYMBOL, LOCALE } from '@/lib/market';
+import { CURRENCY_SYMBOL, LOCALE, usWords } from '@/lib/market';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getExecutiveSummary, getProjectsWithStatus, getDependencyHealthSummary, getExecutiveBusiness, getRemnantSavings } from '@/lib/data';
@@ -226,7 +226,7 @@ export default async function Executive() {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div className="grid grid-cols-3 gap-2 text-center">
-              <div><p className="text-lg font-semibold tnum">{biz.openEnquiries}</p><p className="text-[11px] text-muted-foreground">open enquiries</p></div>
+              <div><p className="text-lg font-semibold tnum">{biz.openEnquiries}</p><p className="text-[11px] text-muted-foreground">{usWords('open enquiries')}</p></div>
               <div><p className="text-lg font-semibold tnum">{formatMoney(biz.openValue)}</p><p className="text-[11px] text-muted-foreground">open value</p></div>
               <div><p className="text-lg font-semibold tnum">{biz.winRate == null ? '—' : `${biz.winRate}%`}</p><p className="text-[11px] text-muted-foreground">win rate</p></div>
             </div>
