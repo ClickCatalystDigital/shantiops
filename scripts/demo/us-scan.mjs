@@ -73,6 +73,10 @@ function report(where, text) {
   }
 }
 
+// Stored status codes the US screens and PDFs translate on the way out (lib/market.js usWords: Enquiry -> Inquiry);
+// the pages and pdfs sections check what a visitor actually sees.
+const CODE_COLUMNS = new Set(['bom_items.purchase_status']);
+
 async function scanDb() {
   const db = createClient({ url: DB_URL, authToken: DB_TOKEN, intMode: 'number' });
   const tables = (await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")).rows.map(r => r.name);
@@ -81,7 +85,7 @@ async function scanDb() {
     // Internal identifiers (keys, links, counters, audit action codes) never reach a screen as text.
     if (INTERNAL_TABLES.has(t)) continue;
     const cols = (await db.execute(`PRAGMA table_info("${t}")`)).rows.filter(c => /TEXT|CHAR|DATE|^$/i.test(c.type))
-      .map(c => c.name).filter(c => !/_key$|^link$/.test(c));
+      .map(c => c.name).filter(c => !/_key$|^link$/.test(c) && !CODE_COLUMNS.has(`${t}.${c}`));
     if (!cols.length) continue;
     const rows = (await db.execute(`SELECT ${cols.map(c => `"${c}"`).join(', ')} FROM "${t}"`)).rows;
     for (const r of rows) for (const c of cols) if (typeof r[c] === 'string') { values++; report(`db ${t}.${c}`, r[c]); }

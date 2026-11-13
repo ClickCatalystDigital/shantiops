@@ -176,6 +176,10 @@ function Welders({ canEdit }) {
   const [edit, setEdit] = useState(null);
   const load = useCallback(() => api('/api/welders').then(setList).catch(e => showToast(e.message, 'error')), []);
   useEffect(() => { load(); }, [load]);
+  async function uploadWpq(w, file) {
+    const fd = new FormData(); fd.append('file', file);
+    try { await api(`/api/welders/${w.id}/file`, { method: 'POST', body: fd }); showToast('WPQ uploaded'); load(); } catch (e) { showToast(e.message, 'error'); }
+  }
   return (
     <Card>
       <CardHeader><CardTitle>Welders and continuity</CardTitle>
@@ -186,7 +190,11 @@ function Welders({ canEdit }) {
             <thead><tr className="text-left text-muted-foreground"><th className="py-1.5">Stamp</th><th>Name</th><th>WPQ</th><th>Process</th><th>Qualified</th><th>Last weld</th><th>Lapses</th><th>Status</th><th /></tr></thead>
             <tbody>{list.flatMap(w => (w.continuity.length ? w.continuity : [{ process: '—' }]).map((c, i) => (
               <tr key={`${w.id}-${i}`} className={`${i === 0 ? 'border-t' : ''} ${w.active ? '' : 'text-muted-foreground'}`}>
-                <td className="py-1.5 font-medium">{i === 0 ? w.stamp : ''}</td><td>{i === 0 ? w.name : ''}</td><td>{i === 0 ? (w.wpq_no || '—') : ''}</td>
+                <td className="py-1.5 font-medium">{i === 0 ? w.stamp : ''}</td><td>{i === 0 ? w.name : ''}</td><td>{i === 0 ? <>{w.wpq_no || '—'}
+                  {w.wpq_pdf_key && <a className="ml-1 text-primary underline" href={`/api/welders/${w.id}/file`} target="_blank" rel="noreferrer">PDF</a>}
+                  {canEdit && <label className="ml-1 inline-flex cursor-pointer items-center text-primary" title="Upload the WPQ PDF"><UploadIcon className="size-3" />
+                    <input type="file" accept="application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadWpq(w, f); }} /></label>}
+                </> : ''}</td>
                 <td>{c.process}</td><td>{c.qualified_on ? formatDate(c.qualified_on) : '—'}</td><td>{c.last_weld ? formatDate(c.last_weld) : '—'}</td>
                 <td>{c.lapse ? formatDate(c.lapse) : '—'}</td>
                 <td className={c.status === 'Current' ? 'text-success' : c.status ? 'text-danger' : ''}>{c.status || ''}</td>

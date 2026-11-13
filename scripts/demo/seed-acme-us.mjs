@@ -19,6 +19,7 @@
 import { createClient } from '@libsql/client';
 import bcrypt from 'bcryptjs';
 import { readFileSync } from 'node:fs';
+import { samplePdf, mtrDoc } from './sample-pdf.mjs';
 
 const { DB_URL, DB_TOKEN, BASE = 'http://localhost:8790', ADMIN_PASSWORD, DEMO_PASSWORD = 'acme-demo' } = process.env;
 if (!DB_URL || !ADMIN_PASSWORD) throw new Error('DB_URL and ADMIN_PASSWORD are required');
@@ -46,6 +47,14 @@ async function login() {
   });
   if (!res.ok) throw new Error(`admin login failed: ${res.status}`);
   cookie = res.headers.get('set-cookie').split(';')[0];
+}
+// A PDF to a file route (multipart), as the admin session. The seed's files are fictional SAMPLE documents.
+async function upload(path, buf, name, extra = {}) {
+  const fd = new FormData(); fd.append('file', new Blob([buf], { type: 'application/pdf' }), name);
+  for (const [k, v] of Object.entries(extra)) fd.append(k, String(v));
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', headers: { cookie }, body: fd });
+  if (!res.ok) throw new Error(`POST ${path} -> ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
 }
 const DAY = 86400000;
 // Dates in US Central time (the US demo's zone), so "today" matches the app's.
@@ -508,12 +517,20 @@ async function seedInspectionPlan() {
   for (const [wps_no, process, pqr_no, is_repair] of [['WPS-101', 'SAW', 'PQR-101', 0], ['WPS-102', 'SMAW', 'PQR-102', 0], ['WPS-103R', 'SMAW', 'PQR-102', 1]]) {
     const w = await api('POST', '/api/wps', { wps_no, process, pqr_no, base_metal: 'P-No. 1 to P-No. 1', thickness: '1/16" to 1-1/4"', pwht: 'Not required up to 3/4"', is_repair });
     welding[wps_no] = w.id;
+    // Approval needs the signed WPS on file (a fictional sample here).
+    await upload(`/api/wps/${w.id}/file`, await samplePdf({ org: 'Acme Boilers Inc.', title: `WELDING PROCEDURE SPECIFICATION ${wps_no}`,
+      fields: [['Process', process], ['Supporting PQR', pqr_no], ['Base metals', 'P-No. 1 to P-No. 1'], ['Thickness range', '1/16" to 1-1/4"'],
+        ['Filler metal', process === 'SAW' ? 'F7A2-EM12K' : 'E7018'], ['Preheat', '50 F min.'], ['PWHT', 'Not required up to 3/4"'], ['Type', is_repair ? 'Repair procedure' : 'Production']],
+      sign: 'Welding engineer' }), `${wps_no}.pdf`);
+    await api('POST', `/api/wps/${w.id}/approve`, {});
   }
-  // Approval needs the signed PDF; the demo has no file storage, so the approval is written directly.
-  await q("UPDATE wps SET status = 'approved', approved_by = 'qc_head', approved_at = ?", [stamp(-200)]);
+  await q('UPDATE wps SET approved_by = ?, approved_at = ?', ['qc_head', stamp(-200)]);
   for (const [name, stamp_] of Object.entries(STAMP)) {
-    await api('POST', '/api/welders', { stamp: stamp_, name, wpq_no: `WPQ-${stamp_.slice(2)}`,
+    const wd = await api('POST', '/api/welders', { stamp: stamp_, name, wpq_no: `WPQ-${stamp_.slice(2)}`,
       processes: { SAW: { qualified_on: iso(-900), last_weld: iso(-90) }, SMAW: { qualified_on: iso(-1100), last_weld: iso(-90) } } });
+    await upload(`/api/welders/${wd.id}/file`, await samplePdf({ org: 'Acme Boilers Inc.', title: `WELDER PERFORMANCE QUALIFICATION WPQ-${stamp_.slice(2)}`,
+      fields: [['Welder', name], ['Stamp', stamp_], ['Processes', 'SAW, SMAW'], ['Test coupon', 'P-No. 1, 3/8" plate, 6G'], ['Qualified on', iso(-1100)], ['Result', 'Accepted (bend tests)']],
+      sign: 'Witnessed by' }), `WPQ-${stamp_.slice(2)}.pdf`);
   }
   welding.template = (await api('POST', '/api/itp-templates', { name: 'Firetube boiler ITP (example)', revision: '0', items: ITP_EXAMPLE })).id;
   // Three heat-exchanger ITPs (full exchanger, bundle only, parts only), so the template list reads like a real shop's.
@@ -610,6 +627,11 @@ async function qcDocs(project) {
       project_ids: [project.id],
     });
     certs.push(c.id);
+    await upload(`/api/test-certificates/${c.id}/pdf`, await samplePdf(mtrDoc({ certNo: `MTR-${project.id}${line.id}`,
+      mill: plate ? 'Ohio Valley Plate Mill' : 'Great Lakes Tube Mill', address: plate ? '700 River Road, Steubenville, OH 43952' : '88 Mill Street, Toledo, OH 43604',
+      spec: plate ? 'ASME SA-516 Gr.70' : /STAY/.test(line.name) ? 'ASME SA-192' : 'ASME SA-178 Gr.A', product: line.name, date: iso(-project.orderAgo + 20),
+      po: `AB-PO-${project.id}${line.id}`, unit: 'MPa', heats: [{ heat: `H${project.id}${line.id}A`, piece: plate ? `P${line.id}` : '-', size: line.spec || '',
+        c: '0.21', mn: '1.05', p: '0.018', s: '0.012', si: '0.28', ys: '290', uts: '510', el: '24' }] })), `MTR-${project.id}${line.id}.pdf`);
   }
   const cap = project.capacity, hp = project.hp;
   // Header fields stored metric (kg/cm², mm, m², kg/hr, °C); the ASME package prints psi, in, sq ft, lb/hr, °F.
@@ -982,12 +1004,63 @@ for (const [date, name] of [['2026-01-01', "New Year's Day"], ['2026-05-25', 'Me
 }
 await q("UPDATE employees SET salary_currency = 'USD', pt_state = ''");
 
-// AB-1001's Data Book, started from the template: lines the records already fill show as included, the rest wait
-// for uploads; painting is marked not applicable. Not released, so the demo can show the checks and a release.
+// AB-1001 (shipped) has its ITP traveler fully cleared: every point signed, hold points released by the customer,
+// VT on every weld and RT on the radiographed seams recorded. Its Data Book is then complete except the nameplate
+// facsimile, which a presenter uploads on camera (scripts/demo/us-sample-docs/Nameplate-AB-1001.pdf) before Release.
 {
+  const d0 = -p1.orderAgo;
+  const itp = await api('POST', '/api/job-sheets', { job_number: `${p1.no}-ITP`, project_id: p1.id, itp_template_id: welding.template,
+    customer_po: `PO-GL-${p1.id}220`, item_number: '1', drawing_approved_on: iso(d0 + 15) });
+  const { stages } = await api('GET', `/api/job-sheets/${itp.id}`);
+  const welds1 = await q('SELECT id, weld_no, nde FROM welds WHERE project_id = ?', [p1.id]);
+  const day = i => iso(d0 + 25 + Math.floor(i * 2.5));
+  for (const [i, st] of stages.entries()) {
+    const at = body => api('PATCH', `/api/job-sheets/${itp.id}/stages/${st.id}`, body);
+    if ((st.point_type || 'R') === 'W') await at({ action: 'notify' });
+    if (!st.qc_only) { await at({ action: 'start', date: day(i) }); await at({ action: 'finish', date: day(i) }); }
+    if (st.test_type) {
+      const t = st.test_type.trim();
+      const targets = st.per_weld ? welds1.filter(w => String(w.nde).toUpperCase().split(/[,\s]+/).includes(t.toUpperCase())) : [null];
+      for (const w of targets) {
+        await api('POST', '/api/qc-records', { project_id: p1.id, job_sheet_stage_id: st.id, weld_id: w?.id, test_type: t, result: 'pass', tested_on: day(i),
+          inspector: t === 'RT' ? 'B. Kaminski (Level II)' : 'Diane Morgan', reference_no: `${t.replace(/\s+/g, '')}-${p1.no}${w ? `-${w.weld_no}` : ''}`,
+          notes: /hydro/i.test(t) ? 'Tested at 225 psi (1.5 x MAWP), held 30 min. No leaks.' : undefined });
+      }
+    }
+    await at({ action: 'qc', date: day(i), inspection_date: day(i) });
+    if (st.point_type === 'H') await at({ action: 'release', release_ref: i < 4 ? 'Signed ITP returned by Great Lakes Dairy (email)' : 'Witnessed by J. Peterson, Lakeshore Inspection Services' });
+  }
+
   const [tpl] = await q('SELECT id FROM databook_templates WHERE is_default = 1');
-  await api('PUT', `/api/projects/${p1.id}/databook`, { template_id: tpl.id });
-  await api('PUT', `/api/projects/${p1.id}/databook`, { line_key: 'paint', state: 'na', note: 'Shipped in primer only per PO' });
+  const book = `/api/projects/${p1.id}/databook`;
+  await api('PUT', book, { template_id: tpl.id });
+  const doc = (title, fields) => samplePdf({ org: 'Acme Boilers Inc.', address: '4200 Industrial Parkway, Cleveland, OH 44135', title, fields });
+  const files = {
+    spec: ['Specification sheet AB-1001.pdf', doc('SPECIFICATION SHEET - AB-1001', [['Customer', 'Great Lakes Dairy Cooperative'], ['Type', '150 HP firetube boiler, 3-pass wetback'], ['MAWP', '150 psi'], ['Code', 'ASME Section I, 2025']])],
+    calcs: ['Design calculations AB-1001.pdf', doc('DESIGN CALCULATIONS - AB-1001', [['Shell (PG-27.2.2)', 't req 0.402 in, provided 0.500 in'], ['Tubesheet (PG-46)', 'stayed, t req 0.571 in, provided 0.625 in'], ['Prepared by', 'Engineering']])],
+    drawings: ['GA drawing AB-1001-GA-01.pdf', doc('GENERAL ARRANGEMENT AB-1001-GA-01 (AS BUILT)', [['Drawing', 'AB-1001-GA-01 rev C'], ['Status', 'As built']])],
+    pwht: ['PWHT not required AB-1001.pdf', doc('POST-WELD HEAT TREATMENT STATEMENT - AB-1001', [['PWHT', 'Not required: P-No. 1, thickness 3/4" and under (PW-39)'], ['Signed', 'QC Manager']])],
+  };
+  for (const [line_key, [name, buf]] of Object.entries(files)) await upload(`${book}/files`, await buf, name, { line_key });
+  const na = { paint: 'Shipped in primer only per PO', mt: 'Not required by the purchase specification', pt: 'Not required by the purchase specification',
+    ut: 'Corner joints examined by RT and VT per the ITP', dim: 'Recorded on the traveler (point 6.3)', pmi: 'Carbon steel only; not required',
+    hardness: 'Not required for P-No. 1 without PWHT', misc: 'Nothing further' };
+  for (const [line_key, note] of Object.entries(na)) await api('PUT', book, { line_key, state: 'na', note });
+}
+
+// The seed works as admin and the app stamps "now": make both travelers read as the QC head's work on the days it
+// was done (inspection date, else the finish date), with notices and customer releases on the same day.
+await q(`UPDATE job_sheet_stages SET qc_sign_by = 'qc_head', qc_sign_at = COALESCE(inspection_date, end_date, start_date) || ' 15:30:00'
+  WHERE qc_sign_at IS NOT NULL AND sheet_id IN (SELECT id FROM job_sheets WHERE itp_template_id IS NOT NULL)`);
+await q(`UPDATE job_sheet_stages SET released_by = 'qc_head', released_at = COALESCE(inspection_date, end_date, start_date) || ' 16:10:00'
+  WHERE released_at IS NOT NULL AND sheet_id IN (SELECT id FROM job_sheets WHERE itp_template_id IS NOT NULL)`);
+await q(`UPDATE job_sheet_stages SET notified_by = 'qc_head', notified_at = date(COALESCE(start_date, inspection_date), '-2 days') || ' 09:00:00'
+  WHERE notified_at IS NOT NULL AND sheet_id IN (SELECT id FROM job_sheets WHERE itp_template_id IS NOT NULL)`);
+
+// AB-1004 (in procurement): one expected delivery lot per issued purchase order, so Delivery Lots and Inbound have content.
+for (const po of await q("SELECT DISTINCT po.id FROM purchase_orders po JOIN po_items pi ON pi.po_id = po.id WHERE po.status = 'issued' AND pi.project_id = ?", [p4.id])) {
+  const items = await q('SELECT id AS po_item_id, qty FROM po_items WHERE po_id = ? AND qty > 0', [po.id]);
+  if (items.length) await api('POST', `/api/purchase-orders/${po.id}/delivery-lots`, { expected_delivery_date: iso(7), lot_label: '1', items });
 }
 
 // The nightly reset shifts every date by (today − seeded_on): workers/demo-reset-cron.
@@ -999,7 +1072,7 @@ const MUST = ['users', 'employees', 'customers', 'suppliers', 'leads', 'crm_note
   'purchase_orders', 'rfqs', 'gate_inward_receipts', 'stock_receipts', 'inward_approvals', 'material_issues', 'material_indents', 'qc_records', 'ncr_records',
   'job_cards', 'production_handovers', 'test_certificates', 'qc_documents', 'qc_document_parts', 'packing_lists', 'pre_dispatch_approvals', 'shipments',
   'installation_visits', 'installation_reports', 'service_calls', 'sales_invoices', 'customer_receipts', 'sale_order_payments', 'tasks', 'attendance_days', 'leave_requests', 'vendor_bills', 'journal_entries',
-  'job_sheets', 'job_sheet_stages', 'itp_templates', 'welds', 'wps', 'welders', 'acceptance_rules', 'databook_templates', 'databooks', 'work_orders', 'work_order_operations', 'job_card_time_logs', 'stock_pieces', 'calc_snapshots', 'payroll_runs', 'salary_slips'];
+  'job_sheets', 'job_sheet_stages', 'itp_templates', 'welds', 'wps', 'welders', 'acceptance_rules', 'databook_templates', 'databooks', 'databook_files', 'po_delivery_lots', 'work_orders', 'work_order_operations', 'job_card_time_logs', 'stock_pieces', 'calc_snapshots', 'payroll_runs', 'salary_slips'];
 const counts = {};
 for (const t of MUST) counts[t] = (await q(`SELECT COUNT(*) n FROM ${t}`))[0].n;
 console.table(counts);

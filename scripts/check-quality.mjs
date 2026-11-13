@@ -2,6 +2,7 @@
 // Runs on a SCRATCH database seeded by scripts/demo/seed-acme-us.mjs (it writes). Usage:
 //   BASE=http://localhost:8790 DB=<that sqlite file> [PASS=acme-demo] node scripts/check-quality.mjs
 // Starts from AB-1005's traveler as seeded: RT failed on weld L1, NCR open, 4.2 onward not cleared.
+// AB-1001's book is seeded complete except the nameplate.
 import { execFileSync } from 'node:child_process';
 const BASE = process.env.BASE || 'http://localhost:8790', PASS = process.env.PASS || 'acme-demo', DB = process.env.DB;
 if (!DB) { console.error('DB (the scratch sqlite file) is required'); process.exit(1); }
@@ -23,11 +24,11 @@ async function call(u, method, path, body) {
 let failed = 0;
 function expect(name, got, want, data) {
   const ok = Array.isArray(want) ? want.includes(got) : got === want;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : ` (got ${got}, want ${want}: ${JSON.stringify(data).slice(0, 200)})`}`);
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : ` (got ${got}, want ${want}: ${String(JSON.stringify(data)).slice(0, 200)})`}`);
   if (!ok) failed++;
 }
 
-const [sheet] = rows("SELECT id, project_id FROM job_sheets WHERE itp_template_id IS NOT NULL ORDER BY id DESC LIMIT 1");
+const [sheet] = rows("SELECT j.id, j.project_id FROM job_sheets j JOIN projects p ON p.id = j.project_id WHERE j.itp_template_id IS NOT NULL AND p.project_no = 'AB-1005'");
 const pt = Object.fromEntries(rows(`SELECT id, item_key FROM job_sheet_stages WHERE sheet_id = ${sheet.id}`).map(r => [r.item_key, r.id]));
 const stage = (u, k, body) => call(u, 'PATCH', `/api/job-sheets/${sheet.id}/stages/${pt[k]}`, body);
 const [l1] = rows(`SELECT id FROM welds WHERE project_id = ${sheet.project_id} AND weld_no = 'L1'`);
@@ -169,6 +170,12 @@ r = await call('qc_head', 'GET', `/api/trace?project=${p1.id}`);
 expect('Trace AB-1001 backwards → every heat it used', r.data.length > 1, true, r.data.length);
 let res = await fetch(`${BASE}/api/projects/${p1.id}/trace-map/pdf`, { headers: { cookie: await login('qc_head') } });
 expect('Material Trace Map PDF', `${res.status} ${res.headers.get('content-type')}`, '200 application/pdf');
+
+// ASME record packages print welds and NDE from the registers (per-weld records included).
+for (const d of rows('SELECT id FROM qc_documents')) {
+  const res2 = await fetch(`${BASE}/api/qc-documents/${d.id}/pdf`, { headers: { cookie: await login('qc_head') } });
+  expect(`QC document ${d.id} package PDF`, res2.status, 200);
+}
 
 // 9. Phase 1c: Data Book.
 r = await call('qc_head', 'GET', `/api/projects/${p1.id}/databook`);

@@ -599,6 +599,7 @@ export const ROUTES = {
   "vendor-bills": () => import("./api/vendor-bills/route.js"),
   "vendor-tds-rates": () => import("./api/vendor-tds-rates/route.js"),
   "version": () => import("./api/version/route.js"),
+  "welders/[id]/file": () => import("./api/welders/[id]/file/route.js"),
   "welders/[id]": () => import("./api/welders/[id]/route.js"),
   "welders": () => import("./api/welders/route.js"),
   "welds/[id]": () => import("./api/welds/[id]/route.js"),
