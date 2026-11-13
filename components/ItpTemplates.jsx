@@ -10,13 +10,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { PlusIcon, PencilIcon, Trash2Icon, ArrowUpIcon, ArrowDownIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, Trash2Icon, ArrowUpIcon, ArrowDownIcon, UploadIcon } from 'lucide-react';
+import { cleanItems } from '@/lib/itp-template.mjs';
 
 const blank = () => ({ section: '', item_key: '', name: '', doc_code: '', point_type: 'R', requires: '', test_type: '', per_weld: 0, qc_only: 0, after_dispatch: 0 });
 
 export default function ItpTemplates({ canEdit = false }) {
   const [list, setList] = useState(null);
   const [editing, setEditing] = useState(null); // {id?, name, revision, items}
+  const [importing, setImporting] = useState(null); // [{name, revision, items, errors, existingId}]
   const load = useCallback(() => api('/api/itp-templates').then(setList).catch(e => { showToast(e.message, 'error'); setList([]); }), []);
   useEffect(() => { load(); }, [load]);
 
@@ -30,11 +32,33 @@ export default function ItpTemplates({ canEdit = false }) {
     catch (e) { showToast(e.message, 'error'); }
   }
 
+  // Import: a JSON file with {templates: [{name, revision, items: [...]}]} (also a bare array or one template).
+  // Checked here with the same rules the save route uses; nothing is written until Import is clicked.
+  async function readImport(file) {
+    if (!file) return;
+    try {
+      const d = JSON.parse(await file.text());
+      const raw = Array.isArray(d) ? d : Array.isArray(d.templates) ? d.templates : [d];
+      const ts = raw.map(t => {
+        const name = String(t?.name || '').trim();
+        const { items, errors } = cleanItems(Array.isArray(t?.items) ? t.items : []);
+        return { name, revision: t?.revision || '', items, errors: [...(name ? [] : ['Template has no name']), ...(items.length ? [] : ['No points']), ...errors],
+          existingId: (list || []).find(x => x.name === name)?.id };
+      });
+      if (!ts.length) throw new Error('No templates in this file');
+      setImporting(ts);
+    } catch (e) { showToast(`Could not read the file: ${e.message}`, 'error'); }
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>ITP templates</CardTitle>
-        {canEdit && <CardAction><Button size="sm" onClick={() => open(null)}><PlusIcon /> New template</Button></CardAction>}
+        {canEdit && <CardAction className="flex gap-2">
+          <Button size="sm" variant="outline" asChild><label className="cursor-pointer"><UploadIcon /> Import
+            <input type="file" accept=".json,application/json" className="hidden" onChange={e => { readImport(e.target.files?.[0]); e.target.value = ''; }} /></label></Button>
+          <Button size="sm" onClick={() => open(null)}><PlusIcon /> New template</Button>
+        </CardAction>}
       </CardHeader>
       <CardContent className="flex flex-col divide-y">
         {list === null ? <p className="text-sm text-muted-foreground">Loading…</p>
@@ -51,6 +75,7 @@ export default function ItpTemplates({ canEdit = false }) {
             </div>
           ))}
       </CardContent>
+      {importing && <ImportDialog ts={importing} onClose={() => setImporting(null)} onDone={() => { setImporting(null); load(); }} />}
       {editing && <TemplateEditor t={editing} canEdit={canEdit} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
     </Card>
   );
@@ -130,6 +155,47 @@ function TemplateEditor({ t, canEdit, onClose, onSaved }) {
           <Button variant="outline" onClick={() => setItems(xs => [...xs, blank()])}><PlusIcon /> Point</Button>
           <Button disabled={busy} onClick={save}>Save template</Button>
         </DialogFooter>}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ImportDialog({ ts, onClose, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const blocked = ts.some(t => t.errors.length);
+  async function run() {
+    setBusy(true);
+    try {
+      for (const t of ts) {
+        const body = { name: t.name, revision: t.revision, items: t.items };
+        if (t.existingId) await api(`/api/itp-templates/${t.existingId}`, { method: 'PUT', body });
+        else await api('/api/itp-templates', { method: 'POST', body });
+      }
+      showToast(`Imported ${ts.length} template${ts.length === 1 ? '' : 's'}`); onDone();
+    } catch (e) { showToast(e.message, 'error'); setBusy(false); }
+  }
+  return (
+    <Dialog open onOpenChange={v => !v && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>Import ITP templates</DialogTitle></DialogHeader>
+        <div className="flex flex-col divide-y text-sm">
+          {ts.map((t, i) => (
+            <div key={i} className="flex flex-col gap-1 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{t.name || '(no name)'}</span>
+                {t.revision && <Badge variant="outline">rev {t.revision}</Badge>}
+                <span className="text-muted-foreground">{t.items.length} points · {t.items.filter(x => x.point_type === 'H').length} hold · {t.items.filter(x => x.point_type === 'W').length} witness</span>
+                {t.existingId && <Badge variant="secondary">replaces existing</Badge>}
+              </div>
+              {t.errors.map((e, j) => <p key={j} className="text-xs text-destructive">{e}</p>)}
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">Job cards already made from a replaced template keep their own points.</p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={busy || blocked} onClick={run}>{blocked ? 'Fix the file first' : `Import ${ts.length}`}</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
