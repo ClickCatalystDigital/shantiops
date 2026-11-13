@@ -10,6 +10,7 @@
 // imported here — it pulls in server-only DB code via each report's compute() route module — so the
 // server page (app/reports/page.js) passes down only serializable {key, title} metadata, and this
 // file owns the client-safe screen-component mapping.
+import { usWords } from '@/lib/market';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { unpackRows } from '@/lib/row-pack.mjs';
 import { useRouter } from 'next/navigation';
@@ -285,9 +286,9 @@ export default function ReportsWorkspace({ department, reports, groups, companie
     const pos = r => { const i = KEY_ORDER.indexOf(r.key); return i < 0 ? 999 : i; };
     list = list.some(r => r.subgroup) ? [...list].sort((a, b) => rank(a) - rank(b) || pos(a) - pos(b)) : list;
     for (const r of list) {
-      const item = { key: r.key, label: r.title, icon: ICON[r.key] || BarChart3Icon };
+      const item = { key: r.key, label: usWords(r.title), icon: ICON[r.key] || BarChart3Icon };
       if (!r.subgroup) { out.push(item); continue; }
-      if (!(r.subgroup in at)) { at[r.subgroup] = out.length; out.push({ key: `grp-${r.subgroup}`, label: r.subgroup, icon: SUBGROUP_ICON[r.subgroup] || BarChart3Icon, group: true, children: [] }); }
+      if (!(r.subgroup in at)) { at[r.subgroup] = out.length; out.push({ key: `grp-${r.subgroup}`, label: usWords(r.subgroup), icon: SUBGROUP_ICON[r.subgroup] || BarChart3Icon, group: true, children: [] }); }
       out[at[r.subgroup]].children.push(item);
     }
     return out;

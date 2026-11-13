@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loader2Icon, ArrowRightIcon, ArrowUpIcon, ChevronRightIcon, GlobeIcon } from 'lucide-react';
 import { FEATURES, FEATURE_DETAILS, INTEGRATIONS } from '@/lib/product-features';
 import { track } from '@/components/DemoAnalytics';
-import { usWords } from '@/lib/market';
+import { usWords, IS_US } from '@/lib/market';
 import DemoWhatsApp from '@/components/DemoWhatsApp';
 
 const FIELDS = [
@@ -99,8 +99,9 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
           <p className="text-sm font-medium text-muted-foreground">SB Ops · live demo</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">The ERP built for boiler manufacturers</h1>
           <p className="mt-3 max-w-xl text-muted-foreground">
-            Walk through a working copy with sample data for Acme Boilers, a made-up company: four orders at design,
-            procurement, production and dispatch. Click anything; changes reset every night.
+            {IS_US
+              ? 'Walk through a working copy with sample data for Acme Boilers, a made-up company: five jobs, from shipped and invoiced to in procurement and in production with an inspection on hold. Click anything; changes reset every night.'
+              : 'Walk through a working copy with sample data for Acme Boilers, a made-up company: four orders at design, procurement, production and dispatch. Click anything; changes reset every night.'}
           </p>
           <p className="mt-3 max-w-xl text-sm text-muted-foreground">
             {usWords('One system, from enquiry to commissioning: CRM, Design, Procurement, Stores, Production, QC, Dispatch, Service, Accounts and HR on one set of records.')}
