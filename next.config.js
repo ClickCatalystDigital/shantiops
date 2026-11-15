@@ -30,8 +30,9 @@ module.exports = {
   // Commit this build came from (GET /api/version): Render sets RENDER_GIT_COMMIT, the GitHub deploy
   // workflow sets GITHUB_SHA. The deploy workflow waits until each server reports the pushed commit.
   // DEMO_BUILD: '1' only in the public demo's Workers build. Client code tests it to leave the real
-  // customer's names out of the demo bundle (the dead branch is dropped at build); Render builds get ''.
-  env: { BUILD_COMMIT: process.env.RENDER_GIT_COMMIT || process.env.GITHUB_SHA || '', DEMO_BUILD: WORKERS ? '1' : '' },
+  // customer's names out of the demo bundle (the dead branch is dropped at build); Render builds and the
+  // client's own Workers build (npm run cf:deploy:client sets SB_CLIENT_BUILD=1) get ''.
+  env: { BUILD_COMMIT: process.env.RENDER_GIT_COMMIT || process.env.GITHUB_SHA || '', DEMO_BUILD: WORKERS && process.env.SB_CLIENT_BUILD !== '1' ? '1' : '' },
   // Cloudflare Workers build (npm run cf:build sets SB_TARGET=workers): libsql's web client instead
   // of the Node one, and its files traced in (Next's tracing only follows the Node entry).
   ...(WORKERS ? {
@@ -41,8 +42,8 @@ module.exports = {
       if (process.env.NO_BUILD_CACHE) config.cache = false;
       return config;
     },
-  } : process.env.NO_BUILD_CACHE ? {
-    // NO_BUILD_CACHE=1: skip webpack's on-disk cache (~1 GB) for a one-off build on a full disk.
+  } : (process.env.NO_BUILD_CACHE || process.env.NEXT_DEV_NO_CACHE) ? {
+    // NO_BUILD_CACHE=1 (one-off build) or NEXT_DEV_NO_CACHE=1 (dev server): skip webpack's on-disk cache (~1 GB) on a full disk.
     webpack(config) { config.cache = false; return config; },
   } : {}),
   // /stores/inventory is served by the /stores page with tab=inventory. Real sub-pages such as

@@ -30,7 +30,10 @@ export async function GET(req, props) {
   });
   const checks = runValidations(validations, snapshot.results);
 
-  const pdf = await renderCalcReportPdf(snapshot, variables, formulas, trace, checks);
+  const ctx = await queryOne(
+    `SELECT cs.name AS sheet_name, p.project_no, p.customer_name, p.company
+     FROM calc_sheets cs JOIN projects p ON p.id = cs.project_id WHERE cs.id = ?`, [snapshotRow.calc_sheet_id]);
+  const pdf = await renderCalcReportPdf(snapshot, variables, formulas, trace, checks, ctx || {});
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',

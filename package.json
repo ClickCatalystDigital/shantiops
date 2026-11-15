@@ -13,6 +13,7 @@
     "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "cf:build:us": "NEXT_PUBLIC_MARKET=NA MARKET=NA npm run cf:build",
     "deploy:demo:us": "npm run cf:build:us && opennextjs-cloudflare deploy -c wrangler.us.jsonc",
+    "cf:deploy:client": "SB_CLIENT_BUILD=1 npm run cf:build && opennextjs-cloudflare deploy --config wrangler.client.jsonc",
     "prebuild": "node scripts/gen-api-routes.mjs && node scripts/gen-migrate-fingerprint.mjs",
     "predev": "node scripts/gen-api-routes.mjs && node scripts/gen-migrate-fingerprint.mjs",
     "check": "npm run lint && node scripts/check-all.mjs"

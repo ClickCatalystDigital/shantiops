@@ -1,0 +1,18 @@
+{
+  "label": "hypothetical",
+  "note": "Illustration for a conversation; not any company's result. Quantity in kg, rates per tonne: converted explicitly. 20,000 is reimbursed under an imagined price variation clause.",
+  "currency": "INR",
+  "market": "in-boilers",
+  "order_value": 4500000,
+  "steel": {
+    "open_qty": 15000, "unit": "kg", "rate_unit": "t",
+    "quote_rate": 58000, "now_rate": 59000,
+    "scenarios": {"low": 57000, "base": 61000, "high": 65000},
+    "recovered": 20000
+  },
+  "timeline": {
+    "advance": 0.10, "materials": 0.62, "other_costs": 0.28, "retention": 0.0,
+    "now_month": 1, "planned_purchase_month": 3, "fabrication_months": 3, "collection_delay": 2, "retention_delay": 0
+  },
+  "annual_rate_pct": 10.5
+}

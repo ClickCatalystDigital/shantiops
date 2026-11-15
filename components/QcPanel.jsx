@@ -77,7 +77,7 @@ function AddRecordDialog({ projectId, router, defaultTestType, linkField, linkOp
             {defaultTestType ? (
               <Input value={form.test_type} disabled />
             ) : (
-              <Input value={form.test_type} onChange={set('test_type')} placeholder="Hydro test, Radiography, MTC…" />
+              <Input value={form.test_type} onChange={set('test_type')} placeholder="Radiography, MTC, DP test…" />
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">

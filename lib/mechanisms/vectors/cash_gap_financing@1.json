@@ -1,0 +1,236 @@
+{
+ "mechanism": "cash_gap_financing",
+ "version": 1,
+ "note": "hand and golden cases are written first and never regenerated; `python -m harness.mechanisms vectors --write` replaces only origin=generated",
+ "cases": [
+  {
+   "id": "golden-g-wc-01",
+   "origin": "golden:g-wc-01",
+   "arithmetic": "benchmarks/in-boilers/golden/v2/dev.yaml g-wc-01: fully paid in advance, balances never negative: cost 0; other_costs = 1 - 0.60 - 0.15 = 0.25",
+   "inputs": {
+    "currency": "INR",
+    "order_value": 1000000,
+    "advance": 1.0,
+    "materials": 0.6,
+    "other_costs": 0.25,
+    "retention": 0.0,
+    "purchase_month": 2,
+    "fabrication_months": 3,
+    "collection_delay": 1,
+    "retention_delay": 6,
+    "annual_rate_pct": 12.0
+   },
+   "expected": {
+    "financing_cost": 0.0,
+    "peak_cash_need": 0.0,
+    "months_negative": 0
+   }
+  },
+  {
+   "id": "golden-g-wc-02",
+   "origin": "golden:g-wc-02",
+   "arithmetic": "dev.yaml g-wc-02: balances m0 +200,000; m1 +200,000; m2 -483,333.33; m3 -566,666.67; m4 -650,000; m5 -650,000; m6 +150,000. Cost = 1% x 2,350,000 = 23,500; peak 650,000; four negative month-ends (months_negative worked from the same balances)",
+   "inputs": {
+    "currency": "INR",
+    "order_value": 1000000,
+    "advance": 0.2,
+    "materials": 0.6,
+    "other_costs": 0.25,
+    "retention": 0.0,
+    "purchase_month": 2,
+    "fabrication_months": 3,
+    "collection_delay": 1,
+    "retention_delay": 6,
+    "annual_rate_pct": 12.0
+   },
+   "expected": {
+    "financing_cost": 23500.0,
+    "peak_cash_need": 650000.0,
+    "months_negative": 4
+   }
+  },
+  {
+   "id": "hand-retention",
+   "origin": "hand",
+   "arithmetic": "10% advance, materials 55% at month 1, other 30% over months 1-2, dispatch month 3, balance 80% at month 4, retention 10% at month 10, 12%/yr. Cumulative: m0 +100,000; m1 -600,000; m2 -750,000; m3 -750,000; m4 +50,000 ... m10 +150,000. Need 600+750+750 = 2,100,000; cost 1% x 2,100,000 = 21,000",
+   "inputs": {
+    "currency": "INR",
+    "order_value": 1000000,
+    "advance": 0.1,
+    "materials": 0.55,
+    "other_costs": 0.3,
+    "retention": 0.1,
+    "purchase_month": 1,
+    "fabrication_months": 2,
+    "collection_delay": 1,
+    "retention_delay": 6,
+    "annual_rate_pct": 12.0
+   },
+   "expected": {
+    "financing_cost": 21000.0,
+    "peak_cash_need": 750000.0,
+    "months_negative": 3
+   }
+  },
+  {
+   "id": "hand-no-advance-slow-collection",
+   "origin": "hand",
+   "arithmetic": "no advance; materials 60% at month 0; other 20% over months 0-1; dispatch month 2; balance at month 5; 18%/yr = 1.5%/month. m0 -350,000; m1 -400,000; m2..m4 -400,000; m5 +100,000. Need 350+4x400 = 1,950,000; cost 1.5% x 1,950,000 = 29,250",
+   "inputs": {
+    "currency": "INR",
+    "order_value": 500000,
+    "advance": 0.0,
+    "materials": 0.6,
+    "other_costs": 0.2,
+    "retention": 0.0,
+    "purchase_month": 0,
+    "fabrication_months": 2,
+    "collection_delay": 3,
+    "retention_delay": 0,
+    "annual_rate_pct": 18.0
+   },
+   "expected": {
+    "financing_cost": 29250.0,
+    "peak_cash_need": 400000.0,
+    "months_negative": 5
+   }
+  },
+  {
+   "id": "hand-steel-paid-early",
+   "origin": "hand",
+   "arithmetic": "As golden-g-wc-02 but 40% of order value (steel) paid at month 0 instead of month 2. m0 +200,000 -400,000 = -200,000; m1 -200,000; m2 -200,000 (other materials 20%) -83,333.33 = -483,333.33; m3 -566,666.67; m4 -650,000; m5 -650,000; m6 +150,000. Need 200,000+200,000+483,333.33+566,666.67+650,000+650,000 = 2,750,000; cost 1% x 2,750,000 = 27,500, which is 4,000 more than g-wc-02 (23,500): 2 months x 200,000 of extra need (the advance covers the other 200,000) x 1%; six negative month-ends",
+   "inputs": {
+    "currency": "INR",
+    "order_value": 1000000,
+    "advance": 0.2,
+    "materials": 0.6,
+    "other_costs": 0.25,
+    "retention": 0.0,
+    "purchase_month": 2,
+    "fabrication_months": 3,
+    "collection_delay": 1,
+    "retention_delay": 6,
+    "annual_rate_pct": 12.0,
+    "steel": 0.4,
+    "steel_month": 0
+   },
+   "expected": {
+    "financing_cost": 27500.0,
+    "peak_cash_need": 650000.0,
+    "months_negative": 6
+   }
+  },
+  {
+   "id": "gen-1",
+   "origin": "generated",
+   "inputs": {
+    "currency": "INR",
+    "order_value": 1000000,
+    "advance": 0.2,
+    "materials": 0.6,
+    "other_costs": 0.25,
+    "retention": 0.0,
+    "purchase_month": 2,
+    "fabrication_months": 3,
+    "collection_delay": 1,
+    "retention_delay": 6,
+    "annual_rate_pct": 12.0,
+    "steel": 0.6,
+    "steel_month": 8
+   },
+   "expected": {
+    "financing_cost": 1000.0,
+    "peak_cash_need": 50000.0,
+    "months_negative": 2
+   }
+  },
+  {
+   "id": "gen-2",
+   "origin": "generated",
+   "inputs": {
+    "currency": "INR",
+    "order_value": 1000000,
+    "advance": 0.2,
+    "materials": 0.6,
+    "other_costs": 0.25,
+    "retention": 0.0,
+    "purchase_month": 2,
+    "fabrication_months": 3,
+    "collection_delay": 1,
+    "retention_delay": 6,
+    "annual_rate_pct": 0
+   },
+   "expected": {
+    "financing_cost": 0.0,
+    "peak_cash_need": 650000.0,
+    "months_negative": 4
+   }
+  },
+  {
+   "id": "gen-3",
+   "origin": "generated",
+   "inputs": {
+    "currency": "XAU",
+    "order_value": 250000,
+    "advance": 0.0,
+    "materials": 0.5,
+    "other_costs": 0.4,
+    "retention": 0.05,
+    "purchase_month": 0,
+    "fabrication_months": 1,
+    "collection_delay": 0,
+    "retention_delay": 12,
+    "annual_rate_pct": 24
+   },
+   "expected": {
+    "financing_cost": 4500.0,
+    "peak_cash_need": 225000.0,
+    "months_negative": 1
+   }
+  },
+  {
+   "id": "gen-4",
+   "origin": "generated",
+   "inputs": {
+    "currency": "XBU",
+    "order_value": 1,
+    "advance": 0.5,
+    "materials": 0.3,
+    "other_costs": 0.3,
+    "retention": 0.5,
+    "purchase_month": 5,
+    "fabrication_months": 6,
+    "collection_delay": 6,
+    "retention_delay": 0,
+    "annual_rate_pct": 10
+   },
+   "expected": {
+    "financing_cost": 0.01,
+    "peak_cash_need": 0.1,
+    "months_negative": 8
+   }
+  },
+  {
+   "id": "gen-5",
+   "origin": "generated",
+   "inputs": {
+    "currency": "INR",
+    "order_value": 5000000,
+    "advance": 0.1,
+    "materials": 0.7,
+    "other_costs": 0.3,
+    "retention": 0.0,
+    "purchase_month": 1,
+    "fabrication_months": 4,
+    "collection_delay": 3,
+    "retention_delay": 0,
+    "annual_rate_pct": 15.5
+   },
+   "expected": {
+    "financing_cost": 377812.5,
+    "peak_cash_need": 4500000.0,
+    "months_negative": 7
+   }
+  }
+ ]
+}

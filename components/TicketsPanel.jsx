@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { api, showToast, formatDate } from '@/lib/client';
 import { todayISO } from '@/lib/date';
 import { DEPARTMENTS } from '@/lib/milestones';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,7 +104,7 @@ export function RaiseDialog({ department, projectId, milestones, router }) {
                 onValueChange={v => setForm(f => ({ ...f, to_department: v, milestone_id: '' }))}>
                 <SelectTrigger className="w-full"><SelectValue placeholder="Choose…" /></SelectTrigger>
                 <SelectContent>
-                  {DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  {DEPARTMENTS.filter(isDepartmentEnabled).map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

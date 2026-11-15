@@ -1,6 +1,7 @@
 import { CURRENCY_SYMBOL, LOCALE, usWords } from '@/lib/market';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 import { getExecutiveSummary, getProjectsWithStatus, getDependencyHealthSummary, getExecutiveBusiness, getRemnantSavings } from '@/lib/data';
 import { getFreshSessionUser, isManager, roleHome } from '@/lib/auth';
 import { todayISO } from '@/lib/date';
@@ -66,6 +67,7 @@ const money = v => (v ? formatMoney(v) : `${CURRENCY_SYMBOL}0`); // formatMoney 
 const DEPT_ORDER = ['Design', 'Procurement', 'Stores', 'Production', 'QC', 'Dispatch', 'Installation'];
 
 export default async function Executive() {
+  const sales = isDepartmentEnabled('Sales'); // Sales / money panels only where this deployment has Sales
   const user = await getFreshSessionUser();
   if (!isManager(user)) redirect(roleHome(user));
 
@@ -119,8 +121,8 @@ export default async function Executive() {
         </Kpi>
         <Kpi label="Value in progress" value={money(biz.valueInProgress)} sub={kpi.avgDelay ? `Average delay ${kpi.avgDelay}d on late milestones` : 'No late milestones'} />
         <Kpi label="Dispatch due this month" value={dueThisMonth.length} sub={dueThisMonth.length ? `Next: ${dueThisMonth[0].project_no} · ${formatDate(dueThisMonth[0].estDispatch)}` : 'Nothing scheduled'} />
-        <Kpi label={`Order book · FY ${biz.fy}`} value={formatMoney(biz.booked)} sub={`${biz.bookedOrders} orders · collected ${formatMoney(biz.collectedFy)} (${collectedPct}%)`} />
-        <Kpi label="Outstanding" value={money(biz.outstanding)} tone={biz.outstanding ? 'text-warning' : ''} sub={`${biz.owingCustomers} customer${biz.owingCustomers === 1 ? '' : 's'} · ${money(biz.collectedMonth)} collected this month`} />
+        {sales && <Kpi label={`Order book · FY ${biz.fy}`} value={formatMoney(biz.booked)} sub={`${biz.bookedOrders} orders · collected ${formatMoney(biz.collectedFy)} (${collectedPct}%)`} />}
+        {sales && <Kpi label="Outstanding" value={money(biz.outstanding)} tone={biz.outstanding ? 'text-warning' : ''} sub={`${biz.owingCustomers} customer${biz.owingCustomers === 1 ? '' : 's'} · ${money(biz.collectedMonth)} collected this month`} />}
       </div>
 
       {/* Row 2 — Milestone Tracker (unchanged) */}
@@ -199,7 +201,7 @@ export default async function Executive() {
                 </ul>
               )}
             </div>
-            <div>
+            {sales && <div>
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Largest outstanding</p>
               {biz.topOwing.length === 0 ? <p className="py-2 text-sm text-muted-foreground">Nothing outstanding.</p> : (
                 <ul className="divide-y">
@@ -212,13 +214,14 @@ export default async function Executive() {
                   ))}
                 </ul>
               )}
-            </div>
+            </div>}
           </CardContent>
         </Card>
       </div>
 
       {/* Row 4 — business health */}
       <div className="grid items-stretch gap-4 lg:grid-cols-3">
+        {sales && <>
         <Card>
           <CardHeader>
             <CardTitle>Sales Funnel</CardTitle>
@@ -253,6 +256,7 @@ export default async function Executive() {
             </div>
           </CardContent>
         </Card>
+        </>}
 
         <Card>
           <CardHeader>

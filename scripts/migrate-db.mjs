@@ -17,6 +17,13 @@ const t = Date.now();
 const probe = createClient({ url: process.env.TURSO_URL, authToken: process.env.TURSO_AUTH_TOKEN || undefined });
 const before = await probe.execute("SELECT value FROM app_settings WHERE key = 'schema_fingerprint'")
   .then((r) => r.rows[0]?.value ?? null).catch(() => null);
+// Without CUSTOMER_SEED, migrate() fills missing rows with the original customer's companies and sample data.
+// A public demo database (it has demo_meta) must never get those: refuse instead of leaking them.
+const isDemo = await probe.execute("SELECT 1 FROM sqlite_master WHERE name = 'demo_meta'").then((r) => r.rows.length > 0).catch(() => false);
+if (isDemo && !process.env.CUSTOMER_SEED) {
+  console.error('migrate-db: this is a demo database; set CUSTOMER_SEED="$(cat scripts/demo/acme-seed.json)"');
+  process.exit(1);
+}
 probe.close();
 const changed = before !== MIGRATE_CODE_FINGERPRINT;
 if (changed) {

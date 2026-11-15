@@ -1,0 +1,101 @@
+{
+ "comparison": {
+  "extra_financing_cost_of_buying_now_instead_of_waiting": {
+   "own rate": 7350.0
+  },
+  "steel_cost_of_waiting_instead_of_buying_now": {
+   "base": 30000.0,
+   "high": 90000.0,
+   "low": -30000.0
+  }
+ },
+ "currency": "INR",
+ "header": "Amounts in INR. Shown separately; not added together. No percentage of margin is computed. Inputs are hypothetical. Deterministic arithmetic: no model, no market data.",
+ "input_sources": {
+  "annual_rate_pct": "hypothetical",
+  "order_value": "hypothetical",
+  "steel.now_rate": "hypothetical",
+  "steel.open_qty": "hypothetical",
+  "steel.quote_rate": "hypothetical",
+  "steel.recovered": "hypothetical",
+  "steel.scenarios": "hypothetical",
+  "timeline": "hypothetical"
+ },
+ "inputs": {
+  "annual_rate_pct": {
+   "own rate": 10.5
+  },
+  "order_value": 4500000.0,
+  "steel": {
+   "now_rate": 59000,
+   "open_qty": 15000.0,
+   "quote_rate": 58000,
+   "rate_unit": "t",
+   "recovered": 20000,
+   "scenarios": {
+    "base": 61000,
+    "high": 65000,
+    "low": 57000
+   },
+   "unit": "kg"
+  },
+  "steel_fraction_of_order_at_quote": 0.193333,
+  "timeline": {
+   "advance": 0.1,
+   "collection_delay": 2,
+   "fabrication_months": 3,
+   "materials": 0.62,
+   "now_month": 1,
+   "other_costs": 0.28,
+   "planned_purchase_month": 3,
+   "retention": 0.0,
+   "retention_delay": 0
+  }
+ },
+ "label": "hypothetical",
+ "lines": {
+  "financing_cost": {
+   "mechanism": "cash_gap_financing@1",
+   "posts_to": "financing cost",
+   "rows": {
+    "own rate": {
+     "steel paid at planned purchase": {
+      "financing_cost": 146475.0,
+      "months_negative": 5,
+      "peak_cash_need": 3600000.0
+     },
+     "steel paid now": {
+      "financing_cost": 153825.0,
+      "months_negative": 7,
+      "peak_cash_need": 3600000.0
+     }
+    }
+   },
+   "vectors_sha256": "c6d3073785840191c1c6a8fe9ec3bc99de8da86f659b3fd7902748f6ca0e6573"
+  },
+  "steel_cost": {
+   "mechanism": "steel_timing@1",
+   "posts_to": "material cost",
+   "rows": {
+    "buy now": {
+     "extra_material_cost": -5000.0,
+     "rate": 59.0
+    },
+    "wait (base)": {
+     "extra_material_cost": 25000.0,
+     "rate": 61.0
+    },
+    "wait (high)": {
+     "extra_material_cost": 85000.0,
+     "rate": 65.0
+    },
+    "wait (low)": {
+     "extra_material_cost": -35000.0,
+     "rate": 57.0
+    }
+   },
+   "vectors_sha256": "ca008a7531dcd502f9441f080959a85e02bc86387ec4fc12f9f4801cc6f2e98a"
+  }
+ },
+ "note": "Illustration for a conversation; not any company's result. Quantity in kg, rates per tonne: converted explicitly. 20,000 is reimbursed under an imagined price variation clause."
+}

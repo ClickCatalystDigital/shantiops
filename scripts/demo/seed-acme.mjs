@@ -97,6 +97,15 @@ async function seedPeople() {
 }
 
 // --- 2. Masters through the API -------------------------------------------------------------------
+// IBR shell-boiler calculation (lib/calc-sets): loaded before the projects, so each project's calc sheet opens with
+// every input at the sample value and its checks passing.
+{
+  const { loadCalcSet } = await import('../../lib/calc-set.mjs');
+  const { readFileSync } = await import('node:fs');
+  const set = JSON.parse(readFileSync(new URL('../../lib/calc-sets/ibr-1950-shell-boiler.json', import.meta.url), 'utf8'));
+  await loadCalcSet({ run: (sql, args = []) => q(sql, args), get: async (sql, args = []) => (await q(sql, args))[0] }, set, { by: 'seed-acme' });
+}
+
 const CUSTOMERS = [
   ['Greenfield Foods Pvt Ltd', 'Nashik', 'Maharashtra', '27'], ['Riverside Textiles Ltd', 'Surat', 'Gujarat', '24'],
   ['Kaveri Pharma Pvt Ltd', 'Mysuru', 'Karnataka', '29'], ['Northstar Paper Mills', 'Indore', 'Madhya Pradesh', '23'],

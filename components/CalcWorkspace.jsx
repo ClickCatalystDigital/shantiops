@@ -16,7 +16,7 @@ import {
   Table as TableIcon, FileText as FileTextIcon, FileSpreadsheet, Upload, MessageSquare, LayoutTemplate,
   LayoutDashboard, ChartSpline, Check, X, Send, User,
 } from 'lucide-react';
-import { computeAll, runValidations, runFormulaTests, extractDeps, round, LIBRARY, goalSeek, sensitivityAnalysis, changeImpact } from '@/lib/calc-engine';
+import { computeAll, runValidations, runFormulaTests, extractDeps, round, showNum, LIBRARY, goalSeek, sensitivityAnalysis, changeImpact } from '@/lib/calc-engine';
 import { api, showToast, formatDate } from '@/lib/client';
 import {
   SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarGroup,
@@ -56,53 +56,49 @@ const STATUS_STYLE = {
   deprecated: { label: 'Deprecated', cls: TONE_CLASS.neutral },
 };
 
-// CALC-CHANGES2.md §A sidebar relabel/regroup — same panels/components, just labels + a `group`
-// for which SidebarGroup heading each renders under. "Calculation" (was "Project") + Registry stay
-// ungrouped/top-level since both are the per-sheet data (Registry moved onto calc_sheet_id along
-// with everything else in this group); Methodology/Library/Tables group visually under
-// "Engineering" even though they stay fully global — the heading is tidiness, not a scope claim
-// (see the brief's explicit correction on this). "Governance" holds Audit. Drawings (§B) is its own
-// standalone entry, added when that panel lands.
+// Sidebar: everyday screens first (no heading), then "Advanced" for the screens an engineer rarely opens
+// (variable list, code library, lookup tables, cross-project glance). Formulas (key 'methodology') are
+// shared by every sheet; the heading is tidiness, not a scope claim.
 const PANELS = [
   {
     key: 'project', label: 'Calculation', icon: Calculator, description: 'Daily work — edit inputs, review results',
-    help: 'Edit inputs on the left — results and validations recompute live. Save a snapshot to freeze this exact run.',
+    help: 'Edit inputs on the left — results and checks recompute live. Save a snapshot to freeze this exact run, then download its PDF.',
+    group: null,
+  },
+  {
+    key: 'methodology', label: 'Formulas', icon: FunctionSquare, description: 'Formulas, versions, approvals, checks',
+    help: 'Edit a formula to save a new version (resets it to Draft). Submit for review, then approve, before the sheet trusts it.',
+    group: null,
+  },
+  {
+    key: 'audit', label: 'Audit', icon: History, description: 'Saved snapshots, PDFs, version history',
+    help: 'Every saved snapshot with its PDF. Replay one to confirm it still reproduces exactly.',
+    group: null,
+  },
+  {
+    key: 'calc-drawing-links', label: 'Calc Links', icon: Calculator, description: 'Which calc sheet substantiates which drawing',
+    help: 'A calc sheet substantiates a drawing. Link one or more calc sheets to each drawing here.',
     group: null,
   },
   {
     key: 'registry', label: 'Registry', icon: Database, description: 'Variables — inputs, constants, computed',
-    help: 'Add the inputs and constants a formula needs. Computed variables show here read-only — they come from Methodology.',
-    group: null,
-  },
-  {
-    key: 'methodology', label: 'Methodology', icon: FunctionSquare, description: 'Formulas, versions, approvals, validations',
-    help: 'Edit a formula to save a new version (resets it to Draft). Submit for review, then approve, before Project trusts it.',
-    group: 'Engineering',
+    help: 'Add the inputs and constants a formula needs. Computed variables show here read-only — they come from Formulas.',
+    group: 'Advanced',
   },
   {
     key: 'library', label: 'Library', icon: BookOpen, description: 'Import formulas cited to published codes',
-    help: 'Import a formula cited to a published code. It lands in Methodology as Pending approval, same as any new formula.',
-    group: 'Engineering',
+    help: 'Import a formula cited to a published code. It lands in Formulas as Pending approval, same as any new formula.',
+    group: 'Advanced',
   },
   {
     key: 'tables', label: 'Tables', icon: TableIcon, description: 'Material/lookup tables, referenced from formulas',
     help: 'Reference a table from a formula with LOOKUP("name", x, "column") — values between rows interpolate automatically.',
-    group: 'Engineering',
-  },
-  {
-    key: 'audit', label: 'Audit', icon: History, description: 'Version history, snapshots, reproduce',
-    help: 'Browse every formula version ever saved, or replay a snapshot to confirm it still reproduces exactly.',
-    group: 'Governance',
-  },
-  {
-    key: 'calc-drawing-links', label: 'Calc Links', icon: Calculator, description: 'Which calc sheet substantiates which drawing',
-    help: 'A calc sheet substantiates a drawing, not a BOM structural node. Link one or more calc sheets to each drawing here.',
-    group: 'Drawings',
+    group: 'Advanced',
   },
   {
     key: 'portfolio', label: 'Portfolio', icon: LayoutDashboard, description: 'Every project’s calc/drawing status at a glance',
-    help: 'Cross-project glance, not scoped to this sheet — every project with a calc sheet or drawing, same data the Operations Design master table uses.',
-    group: 'Portfolio',
+    help: 'Cross-project glance, not scoped to this sheet — every project with a calc sheet or drawing.',
+    group: 'Advanced',
   },
 ];
 // Preserves PANELS order (Workspace/null group first) while grouping for the sidebar's separate
@@ -389,6 +385,32 @@ function TemplatesCard({ templates, router, sheetId }) {
   );
 }
 
+// Inputs and results come grouped by their calc-set definition (calc_input_defs.grp, e.g. "Shell", "Furnace A");
+// variables with no definition (added by hand in Registry) collect under "Other", last.
+function groupVars(vars) {
+  const groups = new Map();
+  for (const v of [...vars].sort((a, b) => (a.groupOrder ?? 999) - (b.groupOrder ?? 999) || (a.sortOrder ?? 0) - (b.sortOrder ?? 0))) {
+    const g = v.group || 'Other';
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(v);
+  }
+  return [...groups];
+}
+
+// One foldable group (native <details>). A sheet with a single group shows it without a header.
+function VarGroup({ title, count, single, defaultOpen, children }) {
+  if (single) return <div className="flex flex-col divide-y">{children}</div>;
+  return (
+    <details open={defaultOpen} className="group border-t first:border-t-0">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:bg-muted/50">
+        <span>{title} <span className="font-normal normal-case tracking-normal">· {count}</span></span>
+        <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="flex flex-col divide-y border-t">{children}</div>
+    </details>
+  );
+}
+
 function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, convergence, passCount, warnCount, failCount, unapproved, onLocalChange, onPersist, router, variables, formulas, tables, templates, sheetId, snapshots, calcView, setCalcView }) {
   const [saving, setSaving] = useState(false);
   const [showIterations, setShowIterations] = useState(false);
@@ -439,26 +461,42 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
             <TemplatesCard templates={templates} router={router} sheetId={sheetId} />
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm">Design inputs</CardTitle></CardHeader>
-              <CardContent className="flex flex-col divide-y p-0">
-                {otherVars.map((v) => (
-                  <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium">{v.name}</div>
-                      <div className="text-xs text-muted-foreground">{TYPE_STYLE[v.type].label}{v.unit ? ` · ${v.unit}` : ''}</div>
-                    </div>
-                    <Input
-                      type="number" defaultValue={v.value} className="w-28 shrink-0 text-right font-mono"
-                      onChange={(e) => onLocalChange(v.id, Number(e.target.value))}
-                      onBlur={(e) => onPersist(v.id, Number(e.target.value))}
-                    />
-                  </div>
+              <CardContent className="flex flex-col p-0">
+                {otherVars.length === 0 && <p className="px-4 pb-4 text-sm text-muted-foreground">No inputs yet. Add one in Registry.</p>}
+                {groupVars(otherVars).map(([group, rows], gi) => (
+                  <VarGroup key={group} title={group} count={rows.length} single={gi === 0 && rows.length === otherVars.length} defaultOpen={gi === 0}>
+                    {rows.map((v) => (
+                      <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">{v.label || v.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {v.label ? <span className="font-mono">{v.name}</span> : TYPE_STYLE[v.type].label}{v.unit && v.unit !== '-' ? ` · ${v.unit}` : ''}
+                          </div>
+                        </div>
+                        <Input
+                          type="number" defaultValue={v.value} className="w-28 shrink-0 text-right font-mono"
+                          onChange={(e) => onLocalChange(v.id, Number(e.target.value))}
+                          onBlur={(e) => onPersist(v.id, Number(e.target.value))}
+                        />
+                      </div>
+                    ))}
+                  </VarGroup>
                 ))}
               </CardContent>
             </Card>
 
-            <Button onClick={saveSnapshot} disabled={saving} className="self-start">
-              <Save data-icon="inline-start" />{saving ? 'Saving…' : 'Save snapshot of this run'}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={saveSnapshot} disabled={saving}>
+                <Save data-icon="inline-start" />{saving ? 'Saving…' : 'Save snapshot of this run'}
+              </Button>
+              {snapshots?.[0] && (
+                <Button variant="outline" asChild>
+                  <a href={`/api/calc-snapshots/${snapshots[0].id}/pdf`} target="_blank" rel="noreferrer" title={`Last saved: ${snapshots[0].label}`}>
+                    <FileTextIcon data-icon="inline-start" /> Download PDF of last snapshot
+                  </a>
+                </Button>
+              )}
+            </div>
 
             {unapproved.length > 0 && (
               <div className="flex items-start gap-2 rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
@@ -516,18 +554,25 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Results</CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col divide-y p-0">
-                {computedVars.map((v) => {
-                  const value = liveValues[v.name];
-                  return (
-                    <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                      <div className="text-sm font-medium">{v.name}</div>
-                      <div className="font-mono text-sm font-medium text-success">
-                        {value === null || value === undefined || Number.isNaN(value) ? '—' : `${round(value)}${v.unit ? ' ' + v.unit : ''}`}
-                      </div>
-                    </div>
-                  );
-                })}
+              <CardContent className="flex flex-col p-0">
+                {groupVars(computedVars).map(([group, rows], gi) => (
+                  <VarGroup key={group} title={group} count={rows.length} single={gi === 0 && rows.length === computedVars.length} defaultOpen={gi === 0}>
+                    {rows.map((v) => {
+                      const value = liveValues[v.name];
+                      return (
+                        <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium">{v.label || v.name}</div>
+                            {v.label && <div className="font-mono text-xs text-muted-foreground">{v.name}</div>}
+                          </div>
+                          <div className="shrink-0 font-mono text-sm font-medium text-success">
+                            {value === null || value === undefined || Number.isNaN(value) ? '—' : `${showNum(value)}${v.unit && v.unit !== '-' ? ' ' + v.unit : ''}`}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </VarGroup>
+                ))}
               </CardContent>
               <CardFooter className="flex items-center gap-4 text-xs">
                 <span className="flex items-center gap-1.5 text-success"><CheckCircle2 className="size-3.5" />{passCount} passed</span>
@@ -599,7 +644,7 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
                   {t.warnings?.length > 0 && <Badge variant="outline" className="text-warning" title={t.warnings.join('; ')}><AlertTriangle className="size-3" data-icon="inline-start" />{t.warnings.length === 1 ? 'extrapolated' : `${t.warnings.length} warnings`}</Badge>}
                   {t.guardExpr && <Badge variant="outline" className={t.skipped ? 'text-muted-foreground' : 'text-info'} title={`Guard: ${t.guardExpr}`}>{t.skipped ? 'skipped (guard false)' : 'guard passed'}</Badge>}
                   <ArrowRight className="size-3 text-muted-foreground" />
-                  <span className="font-mono">{t.error ? 'error' : t.skipped ? 'n/a' : round(t.output)}</span>
+                  <span className="font-mono">{t.error ? 'error' : t.skipped ? 'n/a' : showNum(t.output)}</span>
                 </div>
                 <div className="mt-0.5 pl-4 text-muted-foreground">using {Object.entries(t.inputsUsed).map(([k, val]) => `${k}=${round(val)}`).join(', ')}</div>
                 {t.guardExpr && <div className="mt-0.5 pl-4 text-muted-foreground">guard: {t.guardExpr}</div>}
@@ -1022,7 +1067,7 @@ function RegistryPanel({ variables, liveValues, router, notes, sheetId }) {
                 <TableCell className="text-muted-foreground">{v.unit || '—'}</TableCell>
                 <TableCell className="font-mono">
                   {v.type === 'computed'
-                    ? <span className="text-success">{liveValues[v.name] === null || liveValues[v.name] === undefined ? '—' : round(liveValues[v.name])}</span>
+                    ? <span className="text-success">{liveValues[v.name] === null || liveValues[v.name] === undefined ? '—' : showNum(liveValues[v.name])}</span>
                     : v.type === 'array'
                       ? <span className="text-muted-foreground">{v.arrayRows?.length ?? 0} rows</span>
                       : v.value}
@@ -1036,7 +1081,7 @@ function RegistryPanel({ variables, liveValues, router, notes, sheetId }) {
             ))}
           </TableBody>
         </Table>
-        <p className="px-4 pb-3 text-xs text-muted-foreground">Computed variables are read-only here — they're written by a formula in Methodology.</p>
+        <p className="px-4 pb-3 text-xs text-muted-foreground">Computed variables are read-only here — they're written by a formula in Formulas.</p>
       </Card>
 
       <Card className="h-fit">
@@ -1252,7 +1297,7 @@ function LibraryPanel({ formulas, router, sheetId }) {
   return (
     <div>
       <p className="mb-3 text-xs text-muted-foreground">
-        Pre-cited formulas from published codes. Importing creates a formula in Methodology tagged
+        Pre-cited formulas from published codes. Importing creates a formula in Formulas tagged
         <span className="font-medium text-foreground"> Pending approval</span> — a code authority still has to approve it before
         it's trusted in a project, same as any company-authored formula.
       </p>
@@ -1661,41 +1706,11 @@ function AuditPanel({ variables, formulas, tables, snapshots, router }) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <div>
-        <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Formula version history</div>
-        <div className="flex flex-col gap-3">
-          {formulas.map((f) => (
-            <Card key={f.id}>
-              <CardContent className="p-3">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="text-sm font-medium">{f.name}</span>
-                  <Badge className={STATUS_STYLE[f.status].cls} variant="outline">{STATUS_STYLE[f.status].label}</Badge>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {[...f.versions].reverse().map((ver) => (
-                    <div key={ver.v} className="border-l-2 pl-2 text-xs">
-                      <div className="flex items-center gap-2">
-                        <Badge className={ver.v === f.curV ? 'text-success bg-success/10 ring-1 ring-inset ring-success/20' : ''} variant="outline">
-                          v{ver.v}{ver.v === f.curV ? ' · current' : ''}
-                        </Badge>
-                        <span className="text-muted-foreground">{ver.ts}</span>
-                      </div>
-                      <div className="mt-1 font-mono text-muted-foreground">{ver.expr}</div>
-                      <div className="mt-0.5 text-muted-foreground">{ver.note}</div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Project snapshots</div>
+        <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Saved snapshots</div>
         {snapshots.length === 0 && (
           <Card className="border-dashed">
             <CardContent className="p-3 text-xs text-muted-foreground">
-              No snapshots yet — save one from the Project panel to freeze inputs + formula versions + results.
+              No snapshots yet — save one from Calculation → Worksheet to freeze inputs + formula versions + results.
             </CardContent>
           </Card>
         )}
@@ -1707,7 +1722,11 @@ function AuditPanel({ variables, formulas, tables, snapshots, router }) {
                   <span className="text-sm font-medium">{s.label}</span>
                   <span className="text-muted-foreground">{s.ts}</span>
                 </div>
-                <div className="mb-2 text-muted-foreground">{Object.entries(s.results).map(([k, v]) => `${k}=${round(v)}`).join('  ·  ')}</div>
+                <div className="mb-2 text-muted-foreground">
+                  {[s.inputOverride?.BoilerCapacity != null && `${showNum(s.inputOverride.BoilerCapacity)} kg/hr`,
+                    s.inputOverride?.DesignPressure != null && `${showNum(s.inputOverride.DesignPressure)} kgf/cm2`,
+                    `by ${s.createdBy || '—'}`].filter(Boolean).join('  ·  ')}
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => reproduce(s)}>
                     <RotateCcw className="size-3" data-icon="inline-start" /> Reproduce with current engine
@@ -1735,11 +1754,40 @@ function AuditPanel({ variables, formulas, tables, snapshots, router }) {
               </div>
               <div className="text-muted-foreground">
                 Replayed {reproView.snap.label} using its pinned formula versions and locked inputs, regardless of
-                what the methodology looks like right now.
+                what the formulas look like right now.
               </div>
             </CardContent>
           </Card>
         )}
+      </div>
+      <div>
+        <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Formula version history</div>
+        <div className="flex flex-col gap-3">
+          {formulas.map((f) => (
+            <Card key={f.id}>
+              <CardContent className="p-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="text-sm font-medium">{f.name}</span>
+                  <Badge className={STATUS_STYLE[f.status].cls} variant="outline">{STATUS_STYLE[f.status].label}</Badge>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {[...f.versions].reverse().map((ver) => (
+                    <div key={ver.v} className="border-l-2 pl-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Badge className={ver.v === f.curV ? 'text-success bg-success/10 ring-1 ring-inset ring-success/20' : ''} variant="outline">
+                          v{ver.v}{ver.v === f.curV ? ' · current' : ''}
+                        </Badge>
+                        <span className="text-muted-foreground">{ver.ts}</span>
+                      </div>
+                      <div className="mt-1 font-mono text-muted-foreground">{ver.expr}</div>
+                      <div className="mt-0.5 text-muted-foreground">{ver.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     </div>
   );

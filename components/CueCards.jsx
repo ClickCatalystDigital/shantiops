@@ -9,7 +9,7 @@ import PageHeader from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
-const TONE = { know: 'bg-sky-500', diagnose: 'bg-amber-500', predict: 'bg-violet-400/70', optimize: 'bg-emerald-400/70', execute: 'bg-primary' };
+const TONE = { know: 'bg-sky-500', diagnose: 'bg-amber-500', predict: 'bg-violet-400/70', optimize: 'bg-emerald-400/70', execute: 'bg-primary', calculate: 'bg-teal-600' };
 const ask = q => window.dispatchEvent(new CustomEvent('assistant:ask', { detail: { q } }));
 
 export default function CueCards() {
@@ -27,22 +27,25 @@ export default function CueCards() {
   }, [data, level, area, q]);
   const byLevel = Object.fromEntries((data?.levels || []).map(l => [l.key, l]));
   const count = k => (data?.cards || []).filter(c => c.level === k).length;
+  const CARD_STATUS = data?.status || {};
+  const s = q.trim().toLowerCase();
+  const planned = (data?.planned || []).filter(p => !s || p.q.toLowerCase().includes(s));
 
   return (
     <>
-      <PageHeader title="Cue Cards" description="Things you can say to Ember AI (the button at the bottom right). Pick a card and press Ask, or say it in your own words. Cards for your own departments only." />
+      <PageHeader title="Cue Cards" description="Things you can say to Ember AI (the button at the bottom right). Pick a card and press Ask, or say it in your own words. Cards for your own departments only. Calculations are fixed arithmetic, never the AI's own; changes are saved only when you press Save." />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {(data?.levels || []).map(l => {
-          const live = l.status === 'live', on = level === l.key;
+          const live = l.status === 'live', off = l.status === 'off', on = level === l.key;
           return (
-            <button key={l.key} type="button" disabled={!live} onClick={() => setLevel(on ? null : l.key)} aria-pressed={on}
-              className={cn('flex flex-col gap-1.5 rounded-xl border bg-card p-3.5 text-left transition-all', live ? 'hover:-translate-y-0.5 hover:shadow-sm' : 'cursor-default opacity-60', on && 'ring-2 ring-primary')}>
-              <span className="flex items-center justify-between gap-2">
+            <button key={l.key} type="button" disabled={!live && !off} onClick={() => setLevel(on ? null : l.key)} aria-pressed={on}
+              className={cn('flex flex-col gap-1.5 rounded-xl border bg-card p-3.5 text-left transition-all', live || off ? 'hover:-translate-y-0.5 hover:shadow-sm' : 'cursor-default opacity-60', off && 'opacity-80', on && 'ring-2 ring-primary')}>
+              <span className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                 <span className="flex items-center gap-2 font-semibold">
                   <span className={cn('grid size-6 place-items-center rounded-full text-[11px] font-semibold text-white', TONE[l.key])}>L{l.n}</span>{l.label}
                 </span>
-                <span className={cn('rounded-full px-2 py-0.5 text-[10.5px]', live ? 'bg-success/15 text-success' : 'border border-dashed text-muted-foreground')}>{live ? `${count(l.key)} cards` : 'Coming'}</span>
+                <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px]', live ? 'bg-success/15 text-success' : 'border border-dashed text-muted-foreground')}>{live ? `${count(l.key)} cards` : off ? 'Switched off here' : 'Planned'}</span>
               </span>
               <span className="text-xs leading-snug text-muted-foreground">{l.blurb}</span>
             </button>
@@ -72,13 +75,14 @@ export default function CueCards() {
               <h2 className="text-lg font-semibold">{a.label}</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {cards.map(c => {
-                  const doing = c.level === 'execute', lv = byLevel[c.level];
+                  const doing = c.level === 'execute', calc = c.level === 'calculate', lv = byLevel[c.level];
                   return (
                     <div key={c.q} className="flex flex-col gap-3 rounded-xl border bg-card p-4">
                       <p className="flex-1 text-[15px] italic leading-snug">“{c.q}”</p>
                       <div className="flex items-center justify-between gap-2">
-                        <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><span className={cn('size-2 rounded-full', TONE[c.level])} />L{lv?.n} {lv?.label}{doing ? ' · confirms first' : ''}</span>
-                        <button type="button" onClick={() => ask(c.q)} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-muted">
+                        <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><span className={cn('size-2 rounded-full', TONE[c.level])} />
+                          {calc ? 'What-if calculator · fixed arithmetic' : `L${lv?.n} ${lv?.label}`}{doing ? ' · confirms first' : ''}{c.off ? ` · ${CARD_STATUS.off || 'switched off here'}` : ''}</span>
+                        <button type="button" disabled={c.off} onClick={() => ask(c.q)} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50">
                           {doing ? <EmberMark className="size-3.5" /> : <ArrowUpRightIcon className="size-3.5" />} Ask
                         </button>
                       </div>
@@ -90,6 +94,35 @@ export default function CueCards() {
           );
         })}
       </div>
+      {area === null && level === null && planned.length > 0 && (
+        <section className="flex flex-col gap-4 border-t pt-6" aria-label="Planned, not available yet">
+          <div>
+            <h2 className="text-lg font-semibold">Coming later</h2>
+            <p className="text-sm text-muted-foreground">{CARD_STATUS.planned || 'Planned, not available yet'}. Ember can’t answer these yet; they are here so you can see where it is going.</p>
+          </div>
+          {(data?.plannedGroups || []).map(g => {
+            const items = planned.filter(p => p.group === g.key);
+            if (!items.length) return null;
+            return (
+              <div key={g.key} className="flex flex-col gap-3">
+                <div>
+                  <h3 className="font-semibold">{g.label}</h3>
+                  <p className="text-sm text-muted-foreground">{g.blurb}</p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {items.map(p => (
+                    <div key={p.q} className="flex flex-col gap-2 rounded-xl border border-dashed bg-muted/30 p-4">
+                      <p className="flex-1 text-[15px] italic leading-snug text-muted-foreground">“{p.q}”</p>
+                      <p className="text-[11px] text-muted-foreground">Would use {p.uses}.</p>
+                      <span className="w-fit rounded-full border border-dashed px-2 py-0.5 text-[10.5px] text-muted-foreground">{CARD_STATUS.planned || 'Planned, not available yet'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
     </>
   );
 }

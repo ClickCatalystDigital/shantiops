@@ -7,6 +7,7 @@
 // literal implementation of "it should fetch from the TC data only" (QC-CHANGES.md §1). Preview PDF
 // stays disabled while any part is unlinked — the server route re-asserts this, this is just the UX
 // echo of that gate.
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -21,7 +22,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import TraceabilityBadges from '@/components/TraceabilityBadges';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { ChevronLeftIcon, ChevronDownIcon, AlertTriangleIcon, SearchIcon, PlusIcon, PencilIcon, Trash2Icon, XIcon, RefreshCwIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronDownIcon, AlertTriangleIcon, SearchIcon, PlusIcon, PencilIcon, Trash2Icon, XIcon, RefreshCwIcon, ClipboardPasteIcon } from 'lucide-react';
 import CertPicker from './CertPicker';
 import PdfPreview from './PdfPreview';
 import FloatingPdfPanel from './FloatingPdfPanel';
@@ -37,6 +38,7 @@ import { docSeries } from '@/lib/qc-extra-series.mjs';
 import { STANDARD_MOC } from '@/lib/section-shapes';
 import { classificationSource } from '@/lib/bom-fields.mjs';
 import SearchableSelect from './SearchableSelect';
+import { parsePaste, PASTE_LABELS, PASTE_COLUMNS } from '@/lib/qc-paste.mjs';
 import { COMPANY_NAMES } from '@/lib/company-profiles';
 
 // V2-CHANGES.md Group 2 — same two companies as StatutoryDocsPanel.jsx's NewDocumentSheet; this
@@ -464,6 +466,64 @@ function PartRow({ part, selected, onToggle, onOpenPicker, onRemove, onEdit, onU
 // routing (link-bom-item's route now re-runs reconcileIiiaGroups), and lib/tc-match.js's certificate
 // suggestions, which need a real bom_item to compare against. Optional — a genuinely off-BOM addition
 // (an IBR-mandated attachment that was never a BOM line) still works with the fields typed by hand.
+// Rows copied from Excel, pasted into Form IV A parts or the mountings list (lib/qc-paste.mjs).
+function PasteRowsButton({ documentId, target, router }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const parsed = useMemo(() => parsePaste(text, target), [text, target]);
+  const cols = PASTE_COLUMNS[target];
+  async function submit() {
+    setBusy(true);
+    try {
+      const res = await api(`/api/qc-documents/${documentId}/paste`, { method: 'POST', body: { target, text } });
+      showToast(`Added ${res.added} row${res.added === 1 ? '' : 's'}`);
+      setOpen(false); setText('');
+      router.refresh();
+    } catch (err) { showToast(err.message, 'error'); }
+    setBusy(false);
+  }
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        <ClipboardPasteIcon data-icon="inline-start" />Paste from Excel
+      </Button>
+      <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) setText(''); }}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader><DialogTitle>Paste {target === 'parts' ? 'parts' : 'bought-out items'} from Excel</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Copy the rows in Excel with the columns in this order: <span className="font-medium text-foreground">{PASTE_LABELS[target].join(' · ')}</span>. A heading row is skipped.
+          </p>
+          <textarea value={text} onChange={e => setText(e.target.value)} rows={6} autoFocus
+            className="w-full rounded-md border bg-background p-2 font-mono text-xs" placeholder="Paste here (Ctrl+V)" />
+          {parsed.rows.length > 0 && (
+            <div className="max-h-64 overflow-auto rounded-md border">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/50"><tr>{PASTE_LABELS[target].map(l => <th key={l} className="px-2 py-1 text-left font-medium">{l}</th>)}</tr></thead>
+                <tbody>{parsed.rows.map((r, i) => (
+                  <tr key={i} className="border-t">{cols.map(c => <td key={c} className="px-2 py-1">{r[c] ?? '—'}</td>)}</tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+          {(parsed.skipped.length > 0 || parsed.tooMany) && (
+            <p className="text-xs text-warning">
+              {parsed.skipped.length > 0 && `${parsed.skipped.length} row(s) with no ${target === 'parts' ? 'part name' : 'description'} will be skipped. `}
+              {parsed.tooMany && 'Only the first 500 rows can be added at once.'}
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button disabled={busy || !parsed.rows.length || parsed.tooMany} onClick={submit}>
+              {busy ? 'Adding…' : `Add ${parsed.rows.length || ''} row${parsed.rows.length === 1 ? '' : 's'}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function AddPartDialog({ open, onOpenChange, documentId, bomItems, defaultIiiaGroupId, router }) {
   const EMPTY = { part_no: '', part_name: '', size_t: '', size_w: '', size_l: '', qty: '', bom_item_id: '' };
   const [form, setForm] = useState(EMPTY);
@@ -785,7 +845,7 @@ function IiiaGroupsCard({ documentId, drawings, groups, parts, assemblies, bomIt
           <div className="flex items-center gap-1">
             {canEdit && (
               <>
-                <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
+                <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom} hidden={!isDepartmentEnabled('Engineering')}>
                   <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setNewOpen(true)}>
@@ -1001,7 +1061,7 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
         <CardAction>
           <div className="flex items-center gap-1">
             {canEdit && (
-              <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
+              <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom} hidden={!isDepartmentEnabled('Engineering')}>
                 <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
               </Button>
             )}
@@ -1030,6 +1090,7 @@ function MountingsCard({ documentId, mountings, bomItems, certificates, canEdit,
               <Button size="sm" variant="outline" onClick={addRow}>
                 <PlusIcon data-icon="inline-start" />Add row
               </Button>
+              <PasteRowsButton documentId={documentId} target="mountings" router={router} />
               <Button size="sm" variant="outline" disabled={shown.length === 0} onClick={toggleSelectShown}>
                 {allShownSelected ? 'Deselect all' : 'Select all'}
               </Button>
@@ -1540,7 +1601,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
               {allShownSelected ? 'Deselect all' : 'Select all'}
             </Button>
             {canEdit && (
-              <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom}>
+              <Button size="sm" variant="outline" disabled={syncBusy} onClick={syncBom} hidden={!isDepartmentEnabled('Engineering')}>
                 <RefreshCwIcon data-icon="inline-start" />{syncBusy ? 'Syncing…' : 'Sync from BOM'}
               </Button>
             )}
@@ -1549,6 +1610,7 @@ export default function QcDocumentEditor({ project, document, parts, certificate
                 <PlusIcon data-icon="inline-start" />Add part
               </Button>
             )}
+            {canEdit && <PasteRowsButton documentId={document.id} target="parts" router={router} />}
           </div>
           <div className="flex flex-col divide-y">
             {shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>}

@@ -1,10 +1,12 @@
 import { IS_US } from '@/lib/market';
+import { DEPARTMENTS } from '@/lib/milestones';
+import { isDepartmentEnabled } from '@/lib/manager-scope.mjs';
 import { NextResponse } from 'next/server';
-import { getFreshSessionUser, isAdmin, isInternal, isPM, headDepartments } from '@/lib/auth';
+import { getFreshSessionUser, isAdmin, isInternal, isPM, headDepartments, canAccessDepartment } from '@/lib/auth';
 import { queryOne } from '@/lib/db';
 import { getActionSettings, getAssistantSettings, getAssistantKey, allHelpSections, jevDecide, openRouterError, canManageAssistant, useQuestion, OPENROUTER } from '@/lib/assistant';
 import { takeDemoAiQuestion, returnDemoAiQuestion, DEMO_AI_QUESTIONS } from '@/lib/demo-leads';
-import { pickSections, deptOfPath, kindQuestion, sectionQuestion, asIsQuestion, toolQuestion, ranked, guideAnswer, CANNED, screenList } from '@/lib/assistant-help.mjs';
+import { pickSections, deptOfPath, kindQuestion, sectionQuestion, asIsQuestion, toolQuestion, ranked, guideAnswer, CANNED, screenList, whatIfPointer } from '@/lib/assistant-help.mjs';
 import { toolsFor } from '@/lib/assistant-data';
 import { actionsFor, fill } from '@/lib/assistant-actions';
 
@@ -136,6 +138,13 @@ export async function POST(req) {
   if (messages.at(-1)?.role !== 'user') return NextResponse.json({ error: 'Ask a question first' }, { status: 400 });
   const path = String(b.path || '/').slice(0, 100);
 
+  // Steel purchase timing what-if (market-intel plan D7): answered here, before the AI key, the quota or any model call, so the
+  // question and any figures in it stay in the app. The assistant only points to the deterministic card; it never calculates.
+  const pointer = whatIfPointer(messages.at(-1).content, { canSeeMoney: isPM(user) || canAccessDepartment(user, 'Sales') || canAccessDepartment(user, 'Marketing') });
+  // A dry run (admin's eval, scripts/assistant-eval.mjs) reports the pointer as its own kind, so Cue Cards that expect it can be checked.
+  if (pointer && b.dry) return NextResponse.json({ kind: 'pointer', tool: null, action: null, sections: [], trace: ['steel what-if pointer: fixed reply, no model'], answer: pointer.text });
+  if (pointer) return new Response(pointer.text, { headers: headers([], pointer.link, null) });
+
   let key;
   try { key = await getAssistantKey(); } catch { key = null; }
   if (!key) return NextResponse.json({ error: canManageAssistant(user) ? 'No OpenRouter key yet. Add one in Settings → Assistant.' : 'The assistant is not set up yet. Contact Accounts.' }, { status: 400 });
@@ -171,7 +180,7 @@ export async function POST(req) {
   // either is answered from both guides.
   const own = headDepartments(asker);
   const depts = own.some(d => ['Design', 'Engineering'].includes(d)) ? [...new Set([...own, 'Design', 'Engineering'])] : own;
-  const guide = allHelpSections().filter(s => isPM(asker) || s.dept === 'General' || depts.includes(s.dept));
+  const guide = allHelpSections().filter(s => (!DEPARTMENTS.includes(s.dept) || isDepartmentEnabled(s.dept)) && (isPM(asker) || s.dept === 'General' || depts.includes(s.dept)));
   const viewer = { pm: isPM(asker), depts };
   // assumeData (dry runs only): choose a look-up as if live data were on, without running it. For testing.
   const pretend = !!(b.dry && b.assumeData);
