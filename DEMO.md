@@ -106,8 +106,12 @@ forward by *today − `demo_meta.seeded_on`* (the seed writes that row). Every t
    is served as a static file). Without `SRC_URL` it only sets the photos.
 5. `TURSO_URL=<golden url> TURSO_AUTH_TOKEN=… node scripts/demo/add-customer-logins.mjs --apply` — a portal login for
    every other customer with a Sale Order, so each is under Customer on /demo.
-6. `DB_URL=… DB_TOKEN=… BASE=… ADMIN_PASSWORD=… node scripts/demo/scrub-check.mjs` — database, browser bundle (after `npm run cf:build`), PDF templates, AI prompts, pages, and every PDF the demo prints; must report 0 hits.
-7. Trigger the reset Worker (POST with `x-trigger-key`) and walk the demo.
+6. `TURSO_URL=<golden url> TURSO_AUTH_TOKEN=… node scripts/demo/load-item-catalog.mjs ../items/exports/sbops/IN/catalog.json --apply`
+   — the items workbench's catalogue in the Item Master (US: `--us scripts/demo/us-items.json`, links the seeded items).
+   Re-export first if the workbench changed: `cd ../items && ahrom_usd/.venv/bin/python sbops_export.py`, then copy
+   `exports/sbops/{IN,US}/models` to `public/models/{in,us}`.
+7. `DB_URL=… DB_TOKEN=… BASE=… ADMIN_PASSWORD=… node scripts/demo/scrub-check.mjs` — database, browser bundle (after `npm run cf:build`), PDF templates, AI prompts, pages, and every PDF the demo prints; must report 0 hits.
+8. Trigger the reset Worker (POST with `x-trigger-key`) and walk the demo.
 
 For a local run use a scratch SQLite file (`TURSO_URL=file:/tmp/x.db`, and blank `TURSO_AUTH_TOKEN`): `.env.local` points at the client's live database.
 
