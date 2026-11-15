@@ -389,6 +389,32 @@ function TemplatesCard({ templates, router, sheetId }) {
   );
 }
 
+// Inputs and results come grouped by their calc-set definition (calc_input_defs.grp, e.g. "Shell", "Furnace A");
+// variables with no definition (added by hand in Registry) collect under "Other", last.
+function groupVars(vars) {
+  const groups = new Map();
+  for (const v of [...vars].sort((a, b) => (a.groupOrder ?? 999) - (b.groupOrder ?? 999) || (a.sortOrder ?? 0) - (b.sortOrder ?? 0))) {
+    const g = v.group || 'Other';
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(v);
+  }
+  return [...groups];
+}
+
+// One foldable group (native <details>). A sheet with a single group shows it without a header.
+function VarGroup({ title, count, single, defaultOpen, children }) {
+  if (single) return <div className="flex flex-col divide-y">{children}</div>;
+  return (
+    <details open={defaultOpen} className="group border-t first:border-t-0">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:bg-muted/50">
+        <span>{title} <span className="font-normal normal-case tracking-normal">· {count}</span></span>
+        <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="flex flex-col divide-y border-t">{children}</div>
+    </details>
+  );
+}
+
 function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, convergence, passCount, warnCount, failCount, unapproved, onLocalChange, onPersist, router, variables, formulas, tables, templates, sheetId, snapshots, calcView, setCalcView }) {
   const [saving, setSaving] = useState(false);
   const [showIterations, setShowIterations] = useState(false);
@@ -439,19 +465,26 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
             <TemplatesCard templates={templates} router={router} sheetId={sheetId} />
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm">Design inputs</CardTitle></CardHeader>
-              <CardContent className="flex flex-col divide-y p-0">
-                {otherVars.map((v) => (
-                  <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium">{v.name}</div>
-                      <div className="text-xs text-muted-foreground">{TYPE_STYLE[v.type].label}{v.unit ? ` · ${v.unit}` : ''}</div>
-                    </div>
-                    <Input
-                      type="number" defaultValue={v.value} className="w-28 shrink-0 text-right font-mono"
-                      onChange={(e) => onLocalChange(v.id, Number(e.target.value))}
-                      onBlur={(e) => onPersist(v.id, Number(e.target.value))}
-                    />
-                  </div>
+              <CardContent className="flex flex-col p-0">
+                {otherVars.length === 0 && <p className="px-4 pb-4 text-sm text-muted-foreground">No inputs yet. Add one in Registry.</p>}
+                {groupVars(otherVars).map(([group, rows], gi) => (
+                  <VarGroup key={group} title={group} count={rows.length} single={gi === 0 && rows.length === otherVars.length} defaultOpen={gi === 0}>
+                    {rows.map((v) => (
+                      <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">{v.label || v.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {v.label ? <span className="font-mono">{v.name}</span> : TYPE_STYLE[v.type].label}{v.unit && v.unit !== '-' ? ` · ${v.unit}` : ''}
+                          </div>
+                        </div>
+                        <Input
+                          type="number" defaultValue={v.value} className="w-28 shrink-0 text-right font-mono"
+                          onChange={(e) => onLocalChange(v.id, Number(e.target.value))}
+                          onBlur={(e) => onPersist(v.id, Number(e.target.value))}
+                        />
+                      </div>
+                    ))}
+                  </VarGroup>
                 ))}
               </CardContent>
             </Card>
@@ -516,18 +549,25 @@ function ProjectPanel({ otherVars, computedVars, liveValues, trace, checks, conv
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Results</CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col divide-y p-0">
-                {computedVars.map((v) => {
-                  const value = liveValues[v.name];
-                  return (
-                    <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                      <div className="text-sm font-medium">{v.name}</div>
-                      <div className="font-mono text-sm font-medium text-success">
-                        {value === null || value === undefined || Number.isNaN(value) ? '—' : `${round(value)}${v.unit ? ' ' + v.unit : ''}`}
-                      </div>
-                    </div>
-                  );
-                })}
+              <CardContent className="flex flex-col p-0">
+                {groupVars(computedVars).map(([group, rows], gi) => (
+                  <VarGroup key={group} title={group} count={rows.length} single={gi === 0 && rows.length === computedVars.length} defaultOpen={gi === 0}>
+                    {rows.map((v) => {
+                      const value = liveValues[v.name];
+                      return (
+                        <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium">{v.label || v.name}</div>
+                            {v.label && <div className="font-mono text-xs text-muted-foreground">{v.name}</div>}
+                          </div>
+                          <div className="shrink-0 font-mono text-sm font-medium text-success">
+                            {value === null || value === undefined || Number.isNaN(value) ? '—' : `${round(value)}${v.unit && v.unit !== '-' ? ' ' + v.unit : ''}`}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </VarGroup>
+                ))}
               </CardContent>
               <CardFooter className="flex items-center gap-4 text-xs">
                 <span className="flex items-center gap-1.5 text-success"><CheckCircle2 className="size-3.5" />{passCount} passed</span>
