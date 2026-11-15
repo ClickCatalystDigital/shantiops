@@ -69,7 +69,9 @@ Visitors pick a role on `/demo` (`lib/demo-roles.js`); no password.
 
 ## Customer portal and Shop
 
-Role **Customer** on /demo signs in as `greenfield_foods` (Greenfield Foods, AB-1005): My orders shows the order's live
+Role **Customer** on /demo has a dropdown of every customer with a portal login (Greenfield Foods first) and signs in
+as the one picked. A new Sale Order gives its customer a login, so it appears there by itself; the seeded orders get
+theirs from `scripts/demo/add-customer-logins.mjs`. As Greenfield Foods (AB-1005), My orders shows the order's live
 progress, Shop lists the client's full product range (1,826 lines, client names replaced, **no prices**) and "Request a
 quote" creates a real Sales enquiry (source Shop). Staff can open any customer's portal from the customer sheet
 (**Customer portal ↗**). Products and the login come from `scripts/demo/add-shop-demo.mjs`, not seed-acme.
@@ -102,7 +104,9 @@ forward by *today − `demo_meta.seeded_on`* (the seed writes that row). Every t
    product list (names cleaned against `deny-list.mjs`, no prices), creates the Customer login and gives every Shop
    family its stock photo (`public/shop-demo/<family>.webp`, AI-generated, no real product; image key `/shop-demo/…`
    is served as a static file). Without `SRC_URL` it only sets the photos.
-5. `DB_URL=… DB_TOKEN=… BASE=… ADMIN_PASSWORD=… node scripts/demo/scrub-check.mjs` — database, browser bundle (after `npm run cf:build`), PDF templates, AI prompts, pages, and every PDF the demo prints; must report 0 hits.
-6. Trigger the reset Worker (POST with `x-trigger-key`) and walk the demo.
+5. `TURSO_URL=<golden url> TURSO_AUTH_TOKEN=… node scripts/demo/add-customer-logins.mjs --apply` — a portal login for
+   every other customer with a Sale Order, so each is under Customer on /demo.
+6. `DB_URL=… DB_TOKEN=… BASE=… ADMIN_PASSWORD=… node scripts/demo/scrub-check.mjs` — database, browser bundle (after `npm run cf:build`), PDF templates, AI prompts, pages, and every PDF the demo prints; must report 0 hits.
+7. Trigger the reset Worker (POST with `x-trigger-key`) and walk the demo.
 
 For a local run use a scratch SQLite file (`TURSO_URL=file:/tmp/x.db`, and blank `TURSO_AUTH_TOKEN`): `.env.local` points at the client's live database.

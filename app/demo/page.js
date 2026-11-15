@@ -1,7 +1,8 @@
 // Public demo entry (DEMO_MODE=1 only): a short form, then the visitor picks a department to enter as.
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { DEMO_ROLES } from '@/lib/demo-roles';
+import { DEMO_ROLES, DEMO_CUSTOMERS_SQL } from '@/lib/demo-roles';
+import { queryAll } from '@/lib/db';
 import DemoEntry from '@/components/DemoEntry';
 import { DEMO_VIDEO } from '@/lib/demo-video';
 import { isOwnerPass } from '@/lib/demo-leads';
@@ -17,6 +18,7 @@ export default async function DemoPage() {
   if (process.env.DEMO_MODE !== '1') notFound();
   const lead = (await cookies()).get('demo_lead')?.value;
   const hasLead = !!lead;
+  const customers = (await queryAll(DEMO_CUSTOMERS_SQL).catch(() => [])).map(c => ({ username: c.username, name: c.name }));
   // Structured data for search engines: what the product is and what it does (the same text as the page).
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -47,7 +49,7 @@ export default async function DemoPage() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(video ? [jsonLd, video] : jsonLd).replace(/</g, '\\u003c') }} />
-      <DemoEntry roles={DEMO_ROLES} hasLead={hasLead} isOwner={isOwnerPass(lead)} />
+      <DemoEntry roles={DEMO_ROLES} customers={customers} hasLead={hasLead} isOwner={isOwnerPass(lead)} />
     </>
   );
 }

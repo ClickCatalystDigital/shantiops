@@ -17,9 +17,10 @@ const FIELDS = [
   ['phone', 'Phone (optional)', 'tel', false], ['manufactures', 'What do you manufacture? (optional)', 'text', false],
 ];
 
-export default function DemoEntry({ roles, hasLead, isOwner = false }) {
+export default function DemoEntry({ roles, customers = [], hasLead, isOwner = false }) {
   const [step, setStep] = useState(hasLead ? 'roles' : 'form');
   const [owner, setOwner] = useState(isOwner);
+  const [customer, setCustomer] = useState(customers[0]?.username || '');
 
   // Owner pass (lib/demo-leads.js): /demo#pass=… goes straight to the roles. The secret is wiped from the address bar
   // and is only ever sent in a POST body.
@@ -198,6 +199,24 @@ export default function DemoEntry({ roles, hasLead, isOwner = false }) {
                   <span className="text-xs text-muted-foreground">{r.blurb}</span>
                 </button>
               ))}
+              {/* Customer: any customer with a portal login (every Sale Order creates one), not one fixed account. */}
+              {customers.length > 0 && (
+                <div className="rounded-lg border p-3 sm:col-span-2">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    Customer{busy === customer && <Loader2Icon className="size-3.5 animate-spin" />}
+                  </span>
+                  <span className="text-xs text-muted-foreground">Order portal and product Shop, as one of your customers</span>
+                  <div className="mt-2 flex gap-2">
+                    <select aria-label="Customer" value={customer} onChange={e => setCustomer(e.target.value)} disabled={!!busy}
+                      className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm">
+                      {customers.map(c => <option key={c.username} value={c.username}>{c.name}</option>)}
+                    </select>
+                    <Button type="button" size="sm" className="h-9" disabled={!!busy || !customer} onClick={() => enter(customer)}>
+                      Open portal <ArrowRightIcon />
+                    </Button>
+                  </div>
+                </div>
+              )}
               {error && <p className="text-sm text-danger sm:col-span-2">{error}</p>}
               {passBox && <div className="sm:col-span-2">{passBox}</div>}
             </div>

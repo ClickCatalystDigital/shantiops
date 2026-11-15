@@ -8,8 +8,10 @@ export async function POST(req) {
   if (process.env.DEMO_MODE !== '1') return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!req.cookies.get('demo_lead')?.value) return NextResponse.json({ error: 'Fill in the form first' }, { status: 403 });
   const { username } = await req.json().catch(() => ({}));
-  if (!DEMO_ROLES.some(r => r.username === username)) return NextResponse.json({ error: 'Unknown role' }, { status: 400 });
   const user = await queryOne('SELECT * FROM users WHERE username = ? AND active = 1 AND pending = 0', [username]);
+  // A department role from the list, or any customer with a portal login (never another staff account).
+  const allowed = DEMO_ROLES.some(r => r.username === username) || user?.role === 'customer';
+  if (!allowed) return NextResponse.json({ error: 'Unknown role' }, { status: 400 });
   if (!user) return NextResponse.json({ error: 'Demo data is being reset, try again in a minute' }, { status: 503 });
   const res = NextResponse.json({ ok: true, home: postLoginHome(user) });
   res.cookies.set(COOKIE_OPTS.name, signToken(user), COOKIE_OPTS);
