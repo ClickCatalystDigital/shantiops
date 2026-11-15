@@ -12,7 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import RelatedItemsCard from '@/components/RelatedItemsCard';
 import NodeConfigCard from './NodeConfigCard';
-import Node3DView from './Node3DView';
+import Node3DView, { Item3D } from './Node3DView';
 import { api } from '@/lib/client';
 import { NODE_TYPE_SUGGESTIONS, effectiveNodeLevel, templateVersionState } from '@/lib/bom-tree.mjs';
 
@@ -61,7 +61,7 @@ function childLevelFor(level) {
   return i >= 0 && i < NODE_TYPE_SUGGESTIONS.length - 1 ? NODE_TYPE_SUGGESTIONS[i + 1] : null;
 }
 
-export default function NodeOverviewTab({ node, byId, onSaveQty, onSaveNodeType, onApplyTemplate, onSaveConfig, onConverted }) {
+export default function NodeOverviewTab({ node, byId, capacity, onSaveQty, onSaveNodeType, onApplyTemplate, onSaveConfig, onConverted }) {
   const [qtyDraft, setQtyDraft] = useState(String(node.qty));
   const isCustomType = node.node_type && !NODE_TYPE_SUGGESTIONS.includes(node.node_type);
   const [customTypeOpen, setCustomTypeOpen] = useState(isCustomType);
@@ -130,7 +130,7 @@ export default function NodeOverviewTab({ node, byId, onSaveQty, onSaveNodeType,
         </div>
       </div>
 
-      <Node3DView node={node} byId={byId} selectedItemId={selectedItemId} onShowAll={() => setSelectedItemId('')} />
+      <Node3DView node={node} byId={byId} capacity={capacity} selectedItemId={selectedItemId} />
 
       {onSaveConfig && <NodeConfigCard node={node} onSaveConfig={onSaveConfig} onConverted={onConverted} />}
 
@@ -143,7 +143,12 @@ export default function NodeOverviewTab({ node, byId, onSaveQty, onSaveNodeType,
               {node.items.map(it => <SelectItem key={it.id} value={String(it.id)}>BM-{it.id} · {it.material_description}</SelectItem>)}
             </SelectContent>
           </Select>
-          {selectedItemId && <RelatedItemsCard type="bom_item" id={Number(selectedItemId)} className="flex flex-col gap-2" />}
+          {selectedItemId && (
+            <div className="grid gap-3 sm:grid-cols-[14rem_1fr]">
+              <Item3D item={node.items.find(it => String(it.id) === selectedItemId)} />
+              <RelatedItemsCard type="bom_item" id={Number(selectedItemId)} className="flex flex-col gap-2" />
+            </div>
+          )}
         </div>
       )}
 

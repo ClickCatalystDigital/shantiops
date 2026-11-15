@@ -439,7 +439,7 @@ export default function BomStructureWorkspace({
           <ResizablePanel defaultSize="70" minSize="40">
             {selectedNode ? (
               <BomNodeDetail
-                node={selectedNode} path={nodePath(selectedNode.id, byId)} projectId={Number(projectId)}
+                node={selectedNode} path={nodePath(selectedNode.id, byId)} projectId={Number(projectId)} capacity={selectedProject?.model_capacity}
                 projectBom={projectBom} assemblies={assembliesFlat} unassignedItems={unassignedItems} byId={byId}
                 onSaveQty={saveQty} onSaveNodeType={saveNodeType} onRename={renameNode} onMoveTo={setMovingNode}
                 onDuplicate={duplicateNode} onDelete={deleteNode} onSaved={reloadAll} onLinkChange={reloadAll}
