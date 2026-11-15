@@ -161,7 +161,7 @@ const metal = (THREE, opts = {}) => new THREE.MeshStandardMaterial({ color: 0xb4
 // One of each line, each in its own cell, turning in place. Used for a single item and for nodes with no assembly.
 function ItemGrid3D({ items, onCount, className = 'h-64' }) {
   const boxRef = useRef(null);
-  const sig = items.map(i => `${i.id}:${i.catalog_part_no || i.catalog_item_code || ''}:${i.category || ''}`).join('|');
+  const sig = items.map(itemSig).join('|');
   useScene(boxRef, async (THREE, scene, camera, w, h) => {
     const index = await modelIndex();
     const mat = metal(THREE);
@@ -191,10 +191,66 @@ function ItemGrid3D({ items, onCount, className = 'h-64' }) {
   return <div ref={boxRef} className={`${className} w-full overflow-hidden rounded-md border bg-gradient-to-b from-muted/30 to-muted/70`} />;
 }
 
+const itemSig = i => `${i.id}:${i.catalog_part_no || i.catalog_item_code || ''}:${i.category || ''}:${i.material_description || ''}:${i.size_spec || ''}:${i.category_fields_json || ''}`;
+
+// Square still pictures for a list of items: one shared off-screen renderer draws each item once (queued, cached),
+// so a long list costs no live WebGL contexts.
+const thumbCache = new Map();
+let thumbChain = Promise.resolve();
+let thumbRenderer = null;
+function thumbFor(item) {
+  const sig = itemSig(item);
+  if (thumbCache.has(sig)) return thumbCache.get(sig);
+  const job = thumbChain.then(async () => {
+    const THREE = await import('three');
+    const index = await modelIndex();
+    const key = index[item.catalog_part_no] || index[item.catalog_item_code];
+    const data = key ? await loadMesh(key) : null;
+    const mat = metal(THREE);
+    const obj = data ? meshObject(THREE, data, mat) : fallbackObject(THREE, item, mat);
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
+    const sun = new THREE.DirectionalLight(0xffffff, 2.4); sun.position.set(3, 5, 4); scene.add(sun);
+    const bb = new THREE.Box3().setFromObject(obj); const c = bb.getCenter(new THREE.Vector3()); const size = bb.getSize(new THREE.Vector3());
+    obj.position.sub(c);
+    const g = new THREE.Group(); g.add(obj); g.scale.setScalar(1 / (Math.max(size.x, size.y, size.z) || 1)); g.rotation.set(0.45, -0.7, 0);
+    scene.add(g);
+    const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100); camera.position.set(0, 0, 2.5); camera.lookAt(0, 0, 0);
+    thumbRenderer ||= new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    thumbRenderer.setSize(128, 128, false);
+    thumbRenderer.render(scene, camera);
+    scene.traverse(o => o.geometry?.dispose());
+    return thumbRenderer.domElement.toDataURL('image/png');
+  }).catch(() => null);
+  thumbChain = job;
+  thumbCache.set(sig, job);
+  return job;
+}
+
+export function ItemThumb({ item, className = 'size-12' }) {
+  const ref = useRef(null);
+  const [src, setSrc] = useState(null);
+  const sig = itemSig(item);
+  useEffect(() => {
+    let live = true;
+    const el = ref.current;
+    if (!el) return undefined;
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { io.disconnect(); thumbFor(item).then(u => live && setSrc(u)); } });
+    io.observe(el);
+    return () => { live = false; io.disconnect(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
+  return (
+    <div ref={ref} className={`${className} shrink-0 overflow-hidden rounded-md border bg-gradient-to-b from-muted/30 to-muted/70`}>
+      {src && <img src={src} alt="" className="size-full object-contain" />}
+    </div>
+  );
+}
+
 // The single picked item, for the item's own card.
-export function Item3D({ item }) {
+export function Item3D({ item, className = 'h-48' }) {
   if (!item) return null;
-  return <ItemGrid3D key={item.id} items={[item]} className="h-48" />;
+  return <ItemGrid3D key={item.id} items={[item]} className={className} />;
 }
 
 // Subsystem assemblies of a 3-pass shell boiler, made by ../items/sbops_assemblies.py from the calc-set samples

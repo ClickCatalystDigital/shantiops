@@ -116,7 +116,7 @@ export default function NodeItemsTab({ projectId, node, path, projectBom, assemb
       <BomTable
         projectId={projectId} bom={nodeItems} editableFields={BOM_FIELD_OWNERS.Engineering}
         department="Engineering" assemblies={assemblies} showItemCode defaultAssemblyId={node.id}
-        suggestionsFrom={projectBom} onSaved={onSaved} layout="cards"
+        suggestionsFrom={projectBom} onSaved={onSaved} layout="cards" show3d
       />
     </div>
   );
