@@ -96,13 +96,15 @@ export default function BomStructureWorkspace({
   }, [projectId]);
 
   function reloadStructure() { return loadStructure(projectId); }
+  // Anything that adds or removes items reloads all of it: the item list feeds each node's Items tab and the readiness counts.
   function reloadAll() {
-    loadStructure(projectId);
+    const structure = loadStructure(projectId);
     loadProjectBom(projectId);
     loadReleaseStatus(projectId);
     loadPendingEcns(projectId);
     loadSubsystemCheck(projectId);
     router.refresh();
+    return structure;
   }
 
   async function createTop(name, nodeType) {
@@ -141,7 +143,7 @@ export default function BomStructureWorkspace({
     try {
       const res = await api(`/api/bom-assemblies/${node.id}/duplicate`, { method: 'POST' });
       showToast(`Duplicated — ${res.nodeCount} node(s), ${res.itemCount} item(s)`);
-      await reloadStructure();
+      await reloadAll();
       setSelectedId(res.id);
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -205,7 +207,7 @@ export default function BomStructureWorkspace({
         await api(`/api/bom-assemblies/${node.id}/apply-template`, { method: 'POST', body: { template_id: templateId } });
       }
       showToast(`Applied ${templateIds.length} template${templateIds.length === 1 ? '' : 's'}`);
-      await reloadStructure();
+      await reloadAll();
       setExpandedIds(prev => new Set([...prev, node.id]));
     } catch (err) { showToast(err.message, 'error'); }
   }
@@ -215,7 +217,7 @@ export default function BomStructureWorkspace({
         method: 'POST', body: { project_id: Number(projectId), template_ids: templateIds },
       });
       showToast(`Built ${res.rootIds.length} node(s) from templates — ${res.nodeCount} total node(s), ${res.itemCount} item(s)`);
-      await reloadStructure();
+      await reloadAll();
     } catch (err) { showToast(err.message, 'error'); }
   }
   // "Add subsystem": one build from the picker, minus the lines the user unticked. Under the selected node, or at the
