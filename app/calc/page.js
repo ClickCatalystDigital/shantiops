@@ -1,37 +1,30 @@
-// app/calc/page.js — CALC-CHANGES2.md §A: Calc Sheets' entry point is now a project picker, not the
-// workspace directly. Reuses the real `projects` list (getActiveProjectsList, already used by the
-// Procurement sourcing picker) instead of inventing a second one.
-import Link from 'next/link';
+// app/calc/page.js — Calc Sheets landing page: every calculation sheet as a card, filtered by a searchable
+// project picker and a sheet-name search (?project= preselects a project). Sheets open in the workspace.
 import { redirect } from 'next/navigation';
 import { getFreshSessionUser, canAccessDepartment, roleHome } from '@/lib/auth';
 import { getActiveProjectsList } from '@/lib/data';
-import PageHeader from '@/components/PageHeader';
-import { Card, CardContent } from '@/components/ui/card';
+import { getAllCalcSheets } from '@/lib/calc';
+import CalcSheetsBrowser from '@/components/CalcSheetsBrowser';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CalcProjectPicker() {
+export default async function CalcSheetsPage(props) {
+  const searchParams = await props.searchParams;
   const user = await getFreshSessionUser();
   if (!canAccessDepartment(user, 'Design') && !canAccessDepartment(user, 'Engineering')) redirect(roleHome(user));
 
-  const projects = await getActiveProjectsList();
+  const [projects, sheets] = await Promise.all([getActiveProjectsList(), getAllCalcSheets()]);
+  // A sheet on a project that is no longer active still needs its project in the picker.
+  const byId = new Map(projects.map((p) => [p.id, { id: p.id, project_no: p.project_no, customer_name: p.customer_name }]));
+  for (const s of sheets) if (!byId.has(s.project_id)) byId.set(s.project_id, { id: s.project_id, project_no: s.project_no, customer_name: s.customer_name });
 
   return (
-    <main className="container flex flex-col gap-6 py-8">
-      <PageHeader title="Calc Sheets" description="Pick a project to open its calculation sheets" />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {projects.map((p) => (
-          <Link key={p.id} href={`/calc/project/${p.id}`}>
-            <Card className="transition-colors hover:border-primary/40">
-              <CardContent className="flex flex-col gap-1 py-4">
-                <span className="font-semibold text-primary">{p.project_no}</span>
-                <span className="text-sm text-muted-foreground">{p.customer_name}</span>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-        {projects.length === 0 && <p className="text-sm text-muted-foreground">No active projects yet.</p>}
-      </div>
+    <main className="container py-8">
+      <CalcSheetsBrowser
+        projects={[...byId.values()]}
+        sheets={sheets.map((s) => ({ ...s }))}
+        initialProjectId={Number(searchParams?.project) || null}
+      />
     </main>
   );
 }

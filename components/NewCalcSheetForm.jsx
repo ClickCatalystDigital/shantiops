@@ -1,6 +1,6 @@
 'use client';
 
-// CALC-CHANGES2.md §A — "New Calculation Sheet" dialog on /calc/project/[projectId], same
+// "New Calculation Sheet" dialog on the Calc Sheets page (a project picked), same
 // Dialog+api()+router.push shape as NewProjectForm.jsx.
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -34,7 +34,7 @@ export default function NewCalcSheetForm({ projectId }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline"><PlusIcon data-icon="inline-start" />New Calculation Sheet</Button>
+        <Button><PlusIcon data-icon="inline-start" />New Calculation Sheet</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>New Calculation Sheet</DialogTitle></DialogHeader>
