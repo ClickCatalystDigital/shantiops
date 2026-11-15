@@ -21,8 +21,11 @@ databases (`sb-us-demo-golden`, `sb-us-demo`). It is not deployed by the main-br
 - **Customer role on /demo**: a dropdown of every customer with a portal login (`DEMO_CUSTOMERS_SQL`, only logins linked
   to a customer). On the US demo it lists Greenfield, Bluewater, Great Lakes, Northstar and Riverside.
   `scripts/demo/add-customer-logins.mjs` found every US customer already had one.
-- **Drawings**: the 15 US drawing rows got one-page placeholders (lb/hr, psi, 11x17, Acme Boilers Inc.). Keys are named
-  `calc-drawings/<id>/1763193600777-us-…` so they don't clash with the India files in the shared bucket `sb-demo-files`.
+- **Drawings**: the 15 US drawing rows got one-page placeholders (lb/hr, psi, 11x17, Acme Boilers Inc.). The US build
+  stores demo files under `us/` in the shared bucket `sb-demo-files` (`lib/r2.js` `demoKey`), so the objects are at
+  `us/calc-drawings/<id>/1763193600777-us-…` while `calc_drawing_files.file_key` holds the key without `us/`.
+- **Demo password step**: a customer created from a Sale Order is marked "must change password"; on both demos the
+  portal and Shop now skip that step (`DEMO_MODE`), because the demo enters without a password and blocks changing one.
 - **Ember AI, Cue Cards, QC-only switch**: main's later work, with the US-only retirement of the QC hold ("release a held
   job card") kept: that action, its Cue Card and its checks are removed again on `demo-us`.
 
