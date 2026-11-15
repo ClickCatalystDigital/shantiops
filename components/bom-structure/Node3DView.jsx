@@ -131,6 +131,7 @@ function useScene(boxRef, build, deps) {
       scene = new THREE.Scene();
       scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
       const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(3, 5, 4); scene.add(sun);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.9); fill.position.set(-4, 2, -3); scene.add(fill);
       const w = box.clientWidth, h = box.clientHeight;
       const camera = new THREE.PerspectiveCamera(30, w / h, 0.01, 1e6);
       const tick0 = await build(THREE, scene, camera, w, h);
@@ -155,7 +156,7 @@ function useScene(boxRef, build, deps) {
   }, deps);
 }
 
-const metal = (THREE, opts = {}) => new THREE.MeshStandardMaterial({ color: 0x9aa6b8, metalness: 0.45, roughness: 0.38, side: THREE.DoubleSide, ...opts });
+const metal = (THREE, opts = {}) => new THREE.MeshStandardMaterial({ color: 0xb4bfcc, metalness: 0.25, roughness: 0.5, flatShading: true, side: THREE.DoubleSide, ...opts });
 
 // One of each line, each in its own cell, turning in place. Used for a single item and for nodes with no assembly.
 function ItemGrid3D({ items, onCount, className = 'h-64' }) {
@@ -198,6 +199,8 @@ export function Item3D({ item }) {
 
 // Subsystem assemblies of a 3-pass shell boiler, made by ../items/sbops_assemblies.py from the calc-set samples
 // (public/models/assemblies/<subsystem>-<capacity>.json). Which one a node shows follows its name; a System node shows all three.
+const partColor = n => (/tube|stay/i.test(n) ? 0xd9dfe6 : /valve|gauge/i.test(n) ? 0x5d6d82 : /pump|motor/i.test(n) ? 0x3f6fb5
+  : /pipe|saddle/i.test(n) ? 0x8794a6 : 0xb4bfcc);
 const SUBSYSTEMS = [['shell', /shell|body|pressure part/i], ['mountings', /mounting|fitting/i], ['feed', /feed/i]];
 export function subsystemKeys(node, byId) {
   const own = SUBSYSTEMS.filter(([, re]) => re.test(node.name || '')).map(([k]) => k);
@@ -226,10 +229,14 @@ function Assembly3D({ keys, capacity, highlight, onInfo }) {
     for (const f of files) {
       for (const p of f.parts) {
         if (p.context) { if (shellDone || keys.includes('shell')) continue; shellDone = true; }
-        const hit = re && p.match && new RegExp(p.match, 'i').test(re);
-        const mat = p.context ? metal(THREE, { transparent: true, opacity: 0.18, depthWrite: false })
-          : hit ? metal(THREE, { color: 0xf08a24, emissive: 0x6a2a00 })
-            : re ? metal(THREE, { transparent: true, opacity: 0.35 }) : metal(THREE);
+        const hit = re && p.match && !p.context && new RegExp(p.match, 'i').test(re);
+        // Picked item: orange. The casing (shell, plates, furnace) turns to glass so parts inside stay visible; other
+        // parts stay solid but pale, so the picked one stands out without the scene going to mush.
+        const casing = /shell|tube plate|furnace|reversal/i.test(p.name);
+        const glass = { transparent: true, opacity: 0.12, depthWrite: false, color: 0xcfd8e3 };
+        const mat = hit ? metal(THREE, { color: 0xf08a24, emissive: 0x7a3000 })
+          : p.context || (re && casing) ? metal(THREE, glass)
+            : re ? metal(THREE, { color: 0xdde3ea }) : metal(THREE, { color: partColor(p.name) });
         const o = meshObject(THREE, p.mesh, mat);
         o.children[0].rotation.x = 0; // assemblies are already Y-up
         group.add(o);
