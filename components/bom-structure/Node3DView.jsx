@@ -254,10 +254,12 @@ export function Item3D({ item, className = 'h-48' }) {
 }
 
 // Subsystem assemblies of a 3-pass shell boiler, made by ../items/sbops_assemblies.py from the calc-set samples
-// (public/models/assemblies/<subsystem>-<capacity>.json). Which one a node shows follows its name; a System node shows all three.
+// (public/models/assemblies/<subsystem>-<capacity>.json). Which one a node shows follows its name; a System node shows all of its subsystems'.
 const partColor = n => (/tube|stay/i.test(n) ? 0xd9dfe6 : /valve|gauge/i.test(n) ? 0x5d6d82 : /pump|motor/i.test(n) ? 0x3f6fb5
   : /pipe|saddle/i.test(n) ? 0x8794a6 : 0xb4bfcc);
-const SUBSYSTEMS = [['shell', /shell|body|pressure part/i], ['mountings', /mounting|fitting/i], ['feed', /feed/i]];
+const SUBSYSTEMS = [['shell', /shell|body|pressure part/i], ['mountings', /mounting|fitting/i], ['feed', /feed/i],
+  ['blowdown', /blow ?down/i], ['grate', /fire door|grate/i], ['duct', /flue|duct/i], ['idfan', /\bid fan|induced/i],
+  ['chimney', /chimney|stack/i], ['fdfan', /\bfd fan|forced/i], ['panel', /electric|panel/i], ['insulation', /insulat|cladding/i]];
 export function subsystemKeys(node, byId) {
   const own = SUBSYSTEMS.filter(([, re]) => re.test(node.name || '')).map(([k]) => k);
   if (own.length) return own;
@@ -289,22 +291,25 @@ function Assembly3D({ keys, capacity, highlight, onInfo }) {
         // Picked item: orange. The casing (shell, plates, furnace) turns to glass so parts inside stay visible; other
         // parts stay solid but pale, so the picked one stands out without the scene going to mush.
         const casing = /shell|tube plate|furnace|reversal/i.test(p.name);
-        const glass = { transparent: true, opacity: 0.12, depthWrite: false, color: 0xcfd8e3 };
+        const glass = { transparent: true, opacity: p.context ? 0.07 : 0.12, depthWrite: false, color: 0xcfd8e3 };
         const mat = hit ? metal(THREE, { color: 0xf08a24, emissive: 0x7a3000 })
           : p.context || (re && casing) ? metal(THREE, glass)
             : re ? metal(THREE, { color: 0xdde3ea }) : metal(THREE, { color: partColor(p.name) });
         const o = meshObject(THREE, p.mesh, mat);
         o.children[0].rotation.x = 0; // assemblies are already Y-up
+        if (p.context) o.userData.context = true;
         group.add(o);
         if (!p.context) { shown.push(p.name); if (hit) hits.push(p.name); }
       }
     }
-    const bb = new THREE.Box3().setFromObject(group);
+    // Frame the subsystem's own parts; the faint shell around them is only for orientation.
+    const bb = new THREE.Box3();
+    for (const o of group.children) if (!o.userData.context) bb.expandByObject(o);
     group.position.sub(bb.getCenter(new THREE.Vector3()));
     const pivot = new THREE.Group(); pivot.add(group); pivot.rotation.y = -0.6; scene.add(pivot);
     const r = bb.getSize(new THREE.Vector3()).length() / 2;
     const vHalf = THREE.MathUtils.degToRad(15), hHalf = Math.atan(Math.tan(vHalf) * (w / h));
-    const dist = r / Math.sin(Math.min(vHalf, hHalf)) * 0.9;
+    const dist = r / Math.sin(Math.min(vHalf, hHalf)) * (keys.length > 1 ? 0.75 : 1.05);
     camera.position.set(0, dist * 0.35, dist * 0.94); camera.lookAt(0, 0, 0);
     onInfo?.({ parts: shown, hits, capacity: size.capacity });
     return () => { pivot.rotation.y += 0.004; };
@@ -328,7 +333,7 @@ export default function Node3DView({ node, byId, capacity, selectedItemId }) {
         </div>
         <Assembly3D keys={keys} capacity={capacity} highlight={text} onInfo={setInfo} />
         <p className="text-xs text-muted-foreground">
-          {info ? `${info.parts.join(', ')}. Sized from the ${info.capacity} kg/hr design template; nozzle and pipe positions are illustrative.` : 'Loading…'}
+          {info ? `${keys.length > 1 ? `${keys.length} subsystems, ${info.parts.length} parts` : info.parts.join(', ')}. Sized from the ${info.capacity} kg/hr design template; nozzle and pipe positions are illustrative.` : 'Loading…'}
           {picked && info && (info.hits.length ? ` BM-${picked.id} is shown in orange.` : ` BM-${picked.id} isn't a part of this model.`)}
         </p>
       </div>
