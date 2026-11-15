@@ -29,6 +29,10 @@ databases (`sb-us-demo-golden`, `sb-us-demo`). It is not deployed by the main-br
 - **Ember AI, Cue Cards, QC-only switch**: main's later work, with the US-only retirement of the QC hold ("release a held
   job card") kept: that action, its Cue Card and its checks are removed again on `demo-us`.
 
+- **Item Master and 3D (2026-11-16)**: the BOM node Overview tab has the rotating 3D view; the US items already in the
+  Item Master get their catalogue code in Part No (`load-item-catalog.mjs --us scripts/demo/us-items.json`), which
+  links them to `public/models/us`.
+
 ## Pending (deferred while the India version is the focus)
 
 1. **ASME calculation set**, the US equivalent of `lib/calc-sets/ibr-1950-shell-boiler.json`:

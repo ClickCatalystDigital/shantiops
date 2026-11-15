@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import RelatedItemsCard from '@/components/RelatedItemsCard';
 import NodeConfigCard from './NodeConfigCard';
+import Node3DView from './Node3DView';
 import { api } from '@/lib/client';
 import { NODE_TYPE_SUGGESTIONS, effectiveNodeLevel, templateVersionState } from '@/lib/bom-tree.mjs';
 
@@ -128,6 +129,8 @@ export default function NodeOverviewTab({ node, byId, onSaveQty, onSaveNodeType,
           <p className="text-xs text-muted-foreground">Computed live from every parent above this node — never hand-edited.</p>
         </div>
       </div>
+
+      <Node3DView node={node} byId={byId} selectedItemId={selectedItemId} onShowAll={() => setSelectedItemId('')} />
 
       {onSaveConfig && <NodeConfigCard node={node} onSaveConfig={onSaveConfig} onConverted={onConverted} />}
 
