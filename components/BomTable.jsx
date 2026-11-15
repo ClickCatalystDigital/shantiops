@@ -6,7 +6,7 @@
 // (ProcurementWorkspace.jsx), not duplicated as a second editable control in this shared view.
 // Everything else edits through a small dialog showing only the viewer's editable columns.
 // Enforcement lives in the PATCH route — this UI is convenience.
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import FloatingList from '@/components/FloatingList';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, showToast, formatDate } from '@/lib/client';
@@ -28,6 +28,7 @@ import {
 } from '@/components/BomLineFields';
 import { categoryDisplaySpec, fieldsFromSizeSpec } from '@/lib/section-shapes';
 import { QTY_UNITS as SHARED_QTY_UNITS, normalizeUnit, splitQtyUnit } from '@/lib/qty-units.mjs';
+import { ItemThumb, Item3D } from '@/components/bom-structure/Node3DView';
 import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, TrashIcon, XCircleIcon } from 'lucide-react';
 
 // Real PMB data runs long (a hand-typed cell can be 400+ characters — see the CHIMNEY sheet's
@@ -237,9 +238,32 @@ function SizeSpecRow({ row, index, total, category, onChange, onRemove, removabl
 // — the deliberate way to split a messy legacy row (e.g. three sizes jammed into one qty_text
 // string, a real case found live) into proper separate rows, using the same UI either way. Row #1
 // can never be removed while editing — it's not a draft row, it's the record being saved.
+// The item in 3D at the top of the edit dialog (BOM workspace only), following the form: the Item Master item picked
+// above (its model, by Part No) or, without one, a shape drawn from the category and sizes typed. Redrawn 0.6 s after
+// the last change, not on every keystroke.
+function ItemPreview3D({ id, itemId, description, category, row }) {
+  const [catalog, setCatalog] = useState(null);
+  useEffect(() => {
+    setCatalog(null);
+    if (!itemId) return;
+    let live = true;
+    api(`/api/item-master/${itemId}`).then(r => live && setCatalog(r)).catch(() => {});
+    return () => { live = false; };
+  }, [itemId]);
+  const draft = {
+    id, material_description: description, category: category || catalog?.bom_category || '', size_spec: row?.size_spec || '',
+    category_fields_json: row?.categoryFields && Object.keys(row.categoryFields).length ? JSON.stringify(row.categoryFields) : '',
+    catalog_part_no: catalog?.part_no || null, catalog_item_code: catalog?.item_code || null,
+  };
+  const [shown, setShown] = useState(draft);
+  const key = JSON.stringify(draft);
+  useEffect(() => { const t = setTimeout(() => setShown(JSON.parse(key)), 600); return () => clearTimeout(t); }, [key]);
+  return <Item3D item={shown} className="h-44" />;
+}
+
 function AddItemForm({
   projectId, assemblies, otherFields, otherDefaults, otherOptions, canSetTraceability, canSetManufacturingFlag,
-  existingItem, onDone, onCancel,
+  existingItem, onDone, onCancel, show3d = false,
 }) {
   const [description, setDescription] = useState(existingItem?.material_description || '');
   const [itemId, setItemId] = useState(existingItem?.item_id || null);
@@ -379,6 +403,7 @@ function AddItemForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
+      {show3d && <ItemPreview3D id={existingItem?.id || 'new'} itemId={itemId} description={description} category={category} row={sizeRows[0]} />}
       <ItemSearchField line={line} onChange={onLineChange} />
       <div className="flex gap-3">
         <div className="flex flex-1 flex-col gap-1.5">
@@ -489,7 +514,7 @@ const COLUMN_WIDTHS = {
 // props). Needed by callers whose `bom` is client-fetched local state instead (ReleaseBomTab, same
 // as ProductionBomTab already is) — router.refresh() can't touch that state, so nothing but this
 // callback ever tells them to refetch.
-export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false, onSaved, assemblies = [], showItemCode = false, defaultAssemblyId, suggestionsFrom, layout = 'table' }) {
+export default function BomTable({ projectId, bom, pendingIds = [], editableFields = [], department, canCancel = false, onSaved, assemblies = [], showItemCode = false, defaultAssemblyId, suggestionsFrom, layout = 'table', show3d = false }) {
   const router = useRouter();
   useEntityHighlight(useSearchParams().get('highlight'));
   const [q, setQ] = useState('');
@@ -721,7 +746,8 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
           ) : (
             <div key={r.id} data-entity-code={`BM-${r.id}`} className="rounded-md border p-3 text-sm transition-colors hover:bg-muted/30">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                {show3d && <button type="button" onClick={() => setEditing(r)} aria-label="Open item"><ItemThumb item={r} /></button>}
+                <div className="min-w-0 flex-1">
                   <p className="font-medium">
                     {showItemCode && <span className="mr-1 text-[11px] tnum text-muted-foreground/70">BM-{r.id}</span>}
                     {r.material_description}
@@ -975,7 +1001,7 @@ export default function BomTable({ projectId, bom, pendingIds = [], editableFiel
               otherDefaults={Object.fromEntries(otherFields.map(f => [f, editing[f] != null ? String(editing[f]) : '']))}
               otherOptions={distinctValues}
               canSetTraceability={canSetTraceability} canSetManufacturingFlag={canSetManufacturingFlag}
-              existingItem={editing.__new ? null : editing}
+              existingItem={editing.__new ? null : editing} show3d={show3d}
               onDone={() => { setEditing(null); router.refresh(); onSaved?.(); }}
               onCancel={() => setEditing(null)}
             />
