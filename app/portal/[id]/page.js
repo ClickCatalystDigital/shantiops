@@ -19,7 +19,8 @@ export const dynamic = 'force-dynamic';
 export default async function Portal(props) {
   const params = await props.params;
   const user = await getFreshSessionUser();
-  if (isCustomer(user) && user.must_change_password) redirect('/change-password');
+  // The public demo enters a customer without a password (and blocks password changes), so it skips this step.
+  if (isCustomer(user) && user.must_change_password && process.env.DEMO_MODE !== '1') redirect('/change-password');
   if (isCustomer(user) && !canAccessProject(user, params.id)) redirect(roleHome(user));
 
   const data = await getCustomerView(params.id);
