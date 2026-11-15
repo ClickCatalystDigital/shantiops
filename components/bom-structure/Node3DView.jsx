@@ -10,7 +10,6 @@
 // here from the line's category and size (plate = box, pipe = tube, angle/channel = extruded section).
 // three.js loads only when this card mounts; the scene only renders while the card is on screen.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { BoxIcon } from 'lucide-react';
 
 const MARKET = process.env.NEXT_PUBLIC_MARKET === 'NA' || process.env.NEXT_PUBLIC_MARKET === 'US' ? 'us' : 'in';
@@ -121,62 +120,28 @@ function subtreeItems(node, byId) {
   return all;
 }
 
-export default function Node3DView({ node, byId, selectedItemId, onShowAll }) {
-  const boxRef = useRef(null);
-  const [state, setState] = useState({ shown: 0, models: 0 });
-  const items = useMemo(() => {
-    const all = subtreeItems(node, byId);
-    if (selectedItemId) return all.filter(i => String(i.id) === String(selectedItemId));
-    return all.slice(0, MAX_ITEMS);
-  }, [node, byId, selectedItemId]);
-  const total = useMemo(() => subtreeItems(node, byId).length, [node, byId]);
-  const sig = items.map(i => `${i.id}:${i.catalog_part_no || i.catalog_item_code || ""}:${i.category || ""}`).join("|");
-
+// Starts three.js in `box`, calls build(THREE, scene) for the meshes, frames them and turns them. Stops off screen.
+function useScene(boxRef, build, deps) {
   useEffect(() => {
     const box = boxRef.current;
-    if (!box || !items.length) return undefined;
+    if (!box) return undefined;
     let stop = false, raf = 0, visible = true, renderer, scene;
     (async () => {
       const THREE = await import('three');
-      const index = await modelIndex();
-      if (stop) return;
-      const mat = new THREE.MeshStandardMaterial({ color: 0x9aa6b8, metalness: 0.45, roughness: 0.38 });
-      const objs = await Promise.all(items.map(async it => {
-        const key = index[it.catalog_part_no] || index[it.catalog_item_code];
-        const data = key ? await loadMesh(key) : null;
-        return { obj: data ? meshObject(THREE, data, mat) : fallbackObject(THREE, it, mat), model: !!data };
-      }));
-      if (stop) return;
       scene = new THREE.Scene();
       scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
       const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(3, 5, 4); scene.add(sun);
-      // Each object scaled to a 1-unit cell on a fixed grid facing the camera; every cell turns on its own spot.
-      const cells = [];
       const w = box.clientWidth, h = box.clientHeight;
-      const cols = Math.max(1, Math.min(objs.length, Math.round(Math.sqrt(objs.length * (w / h)))));
-      const rows = Math.ceil(objs.length / cols);
-      objs.forEach(({ obj }, i) => {
-        const bb = new THREE.Box3().setFromObject(obj); const size = bb.getSize(new THREE.Vector3()); const c = bb.getCenter(new THREE.Vector3());
-        const cell = new THREE.Group(); obj.position.sub(c); cell.add(obj); cell.scale.setScalar(1 / (Math.max(size.x, size.y, size.z) || 1));
-        cell.rotation.x = 0.35; // tip toward the camera a little so flat things read
-        const turn = new THREE.Group(); turn.add(cell);
-        turn.position.set((i % cols - (cols - 1) / 2) * 1.3, ((rows - 1) / 2 - Math.floor(i / cols)) * 1.3, 0);
-        turn.rotation.y = i * 0.7;
-        scene.add(turn); cells.push(turn);
-      });
-      const camera = new THREE.PerspectiveCamera(30, w / h, 0.01, 100);
-      const vHalf = THREE.MathUtils.degToRad(15);
-      const hHalf = Math.atan(Math.tan(vHalf) * (w / h));
-      const dist = Math.max((cols * 1.3 / 2) / Math.tan(hHalf), (rows * 1.3 / 2) / Math.tan(vHalf)) + 0.8;
-      camera.position.set(0, 0, dist); camera.lookAt(0, 0, 0);
+      const camera = new THREE.PerspectiveCamera(30, w / h, 0.01, 1e6);
+      const tick0 = await build(THREE, scene, camera, w, h);
+      if (stop || !tick0) return;
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); renderer.setSize(w, h);
       box.appendChild(renderer.domElement);
-      setState({ shown: objs.length, models: objs.filter(o => o.model).length });
       const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; }); io.observe(box);
       const tick = () => {
         if (stop) { io.disconnect(); return; }
-        if (visible && !document.hidden) { for (const c of cells) c.rotation.y += 0.008; renderer.render(scene, camera); }
+        if (visible && !document.hidden) { tick0(); renderer.render(scene, camera); }
         raf = requestAnimationFrame(tick);
       };
       tick();
@@ -187,22 +152,136 @@ export default function Node3DView({ node, byId, selectedItemId, onShowAll }) {
       renderer?.dispose(); renderer?.domElement.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig]);
+  }, deps);
+}
 
-  if (!total) return null;
-  const picked = selectedItemId && items[0];
+const metal = (THREE, opts = {}) => new THREE.MeshStandardMaterial({ color: 0x9aa6b8, metalness: 0.45, roughness: 0.38, side: THREE.DoubleSide, ...opts });
+
+// One of each line, each in its own cell, turning in place. Used for a single item and for nodes with no assembly.
+function ItemGrid3D({ items, onCount, className = 'h-64' }) {
+  const boxRef = useRef(null);
+  const sig = items.map(i => `${i.id}:${i.catalog_part_no || i.catalog_item_code || ''}:${i.category || ''}`).join('|');
+  useScene(boxRef, async (THREE, scene, camera, w, h) => {
+    const index = await modelIndex();
+    const mat = metal(THREE);
+    const objs = await Promise.all(items.map(async it => {
+      const key = index[it.catalog_part_no] || index[it.catalog_item_code];
+      const data = key ? await loadMesh(key) : null;
+      return { obj: data ? meshObject(THREE, data, mat) : fallbackObject(THREE, it, mat), model: !!data };
+    }));
+    const cells = [];
+    const cols = Math.max(1, Math.min(objs.length, Math.round(Math.sqrt(objs.length * (w / h)))));
+    const rows = Math.ceil(objs.length / cols);
+    objs.forEach(({ obj }, i) => {
+      const bb = new THREE.Box3().setFromObject(obj); const size = bb.getSize(new THREE.Vector3()); const c = bb.getCenter(new THREE.Vector3());
+      const cell = new THREE.Group(); obj.position.sub(c); cell.add(obj); cell.scale.setScalar(1 / (Math.max(size.x, size.y, size.z) || 1));
+      cell.rotation.x = 0.35;
+      const turn = new THREE.Group(); turn.add(cell);
+      turn.position.set((i % cols - (cols - 1) / 2) * 1.3, ((rows - 1) / 2 - Math.floor(i / cols)) * 1.3, 0);
+      turn.rotation.y = i * 0.7;
+      scene.add(turn); cells.push(turn);
+    });
+    const vHalf = THREE.MathUtils.degToRad(15), hHalf = Math.atan(Math.tan(vHalf) * (w / h));
+    camera.position.set(0, 0, Math.max((cols * 1.3 / 2) / Math.tan(hHalf), (rows * 1.3 / 2) / Math.tan(vHalf)) + 0.8);
+    camera.lookAt(0, 0, 0);
+    onCount?.(objs.filter(o => o.model).length);
+    return () => { for (const c of cells) c.rotation.y += 0.008; };
+  }, [sig]);
+  return <div ref={boxRef} className={`${className} w-full overflow-hidden rounded-md border bg-gradient-to-b from-muted/30 to-muted/70`} />;
+}
+
+// The single picked item, for the item's own card.
+export function Item3D({ item }) {
+  if (!item) return null;
+  return <ItemGrid3D key={item.id} items={[item]} className="h-48" />;
+}
+
+// Subsystem assemblies of a 3-pass shell boiler, made by ../items/sbops_assemblies.py from the calc-set samples
+// (public/models/assemblies/<subsystem>-<capacity>.json). Which one a node shows follows its name; a System node shows all three.
+const SUBSYSTEMS = [['shell', /shell|body|pressure part/i], ['mountings', /mounting|fitting/i], ['feed', /feed/i]];
+export function subsystemKeys(node, byId) {
+  const own = SUBSYSTEMS.filter(([, re]) => re.test(node.name || '')).map(([k]) => k);
+  if (own.length) return own;
+  const children = [...byId.values()].filter(a => a.parent_id === node.id);
+  const viaChildren = SUBSYSTEMS.filter(([, re]) => children.some(c => re.test(c.name || ''))).map(([k]) => k);
+  return viaChildren.length > 1 ? viaChildren : [];
+}
+let asmIndex = null;
+const asmCache = new Map();
+const loadJson = url => { if (!asmCache.has(url)) asmCache.set(url, fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null)); return asmCache.get(url); };
+
+function Assembly3D({ keys, capacity, highlight, onInfo }) {
+  const boxRef = useRef(null);
+  useScene(boxRef, async (THREE, scene, camera, w, h) => {
+    asmIndex ||= loadJson('/models/assemblies/index.json');
+    const sizes = (await asmIndex) || [];
+    if (!sizes.length) return null;
+    const cap = parseFloat(capacity) || 2000;
+    const size = sizes.reduce((b, s) => (Math.abs(s.capacity - cap) < Math.abs(b.capacity - cap) ? s : b));
+    const files = (await Promise.all(keys.map(k => loadJson(`/models/assemblies/${k}-${size.capacity}.json`)))).filter(Boolean);
+    const re = highlight ? highlight : null;
+    const group = new THREE.Group();
+    const shown = [], hits = [];
+    let shellDone = false;
+    for (const f of files) {
+      for (const p of f.parts) {
+        if (p.context) { if (shellDone || keys.includes('shell')) continue; shellDone = true; }
+        const hit = re && p.match && new RegExp(p.match, 'i').test(re);
+        const mat = p.context ? metal(THREE, { transparent: true, opacity: 0.18, depthWrite: false })
+          : hit ? metal(THREE, { color: 0xf08a24, emissive: 0x6a2a00 })
+            : re ? metal(THREE, { transparent: true, opacity: 0.35 }) : metal(THREE);
+        const o = meshObject(THREE, p.mesh, mat);
+        o.children[0].rotation.x = 0; // assemblies are already Y-up
+        group.add(o);
+        if (!p.context) { shown.push(p.name); if (hit) hits.push(p.name); }
+      }
+    }
+    const bb = new THREE.Box3().setFromObject(group);
+    group.position.sub(bb.getCenter(new THREE.Vector3()));
+    const pivot = new THREE.Group(); pivot.add(group); pivot.rotation.y = -0.6; scene.add(pivot);
+    const r = bb.getSize(new THREE.Vector3()).length() / 2;
+    const vHalf = THREE.MathUtils.degToRad(15), hHalf = Math.atan(Math.tan(vHalf) * (w / h));
+    const dist = r / Math.sin(Math.min(vHalf, hHalf)) * 0.9;
+    camera.position.set(0, dist * 0.35, dist * 0.94); camera.lookAt(0, 0, 0);
+    onInfo?.({ parts: shown, hits, capacity: size.capacity });
+    return () => { pivot.rotation.y += 0.004; };
+  }, [keys.join(), capacity, highlight]);
+  return <div ref={boxRef} className="h-72 w-full overflow-hidden rounded-md border bg-gradient-to-b from-muted/30 to-muted/70" />;
+}
+
+export default function Node3DView({ node, byId, capacity, selectedItemId }) {
+  const [info, setInfo] = useState(null);
+  const [models, setModels] = useState(0);
+  const all = useMemo(() => subtreeItems(node, byId), [node, byId]);
+  const keys = useMemo(() => subsystemKeys(node, byId), [node, byId]);
+  const picked = selectedItemId ? all.find(i => String(i.id) === String(selectedItemId)) : null;
+  const text = picked ? `${picked.material_description || ''} ${picked.size_spec || ''}` : null;
+  if (keys.length) {
+    return (
+      <div className="flex flex-col gap-1.5 border-t pt-3">
+        <div className="flex items-center gap-2">
+          <BoxIcon className="size-4 text-muted-foreground" />
+          <span className="text-sm font-medium">3D · {node.name} assembly</span>
+        </div>
+        <Assembly3D keys={keys} capacity={capacity} highlight={text} onInfo={setInfo} />
+        <p className="text-xs text-muted-foreground">
+          {info ? `${info.parts.join(', ')}. Sized from the ${info.capacity} kg/hr design template; nozzle and pipe positions are illustrative.` : 'Loading…'}
+          {picked && info && (info.hits.length ? ` BM-${picked.id} is shown in orange.` : ` BM-${picked.id} isn't a part of this model.`)}
+        </p>
+      </div>
+    );
+  }
+  if (!all.length) return null;
+  const items = all.slice(0, MAX_ITEMS);
   return (
     <div className="flex flex-col gap-1.5 border-t pt-3">
       <div className="flex items-center gap-2">
         <BoxIcon className="size-4 text-muted-foreground" />
-        <span className="text-sm font-medium">{picked ? `3D · BM-${picked.id} ${picked.material_description}` : '3D · this subsystem'}</span>
-        {picked && onShowAll && <Button size="xs" variant="ghost" className="ml-auto" onClick={onShowAll}>Show whole subsystem</Button>}
+        <span className="text-sm font-medium">3D · items under {node.name}</span>
       </div>
-      <div ref={boxRef} className="h-64 w-full overflow-hidden rounded-md border bg-gradient-to-b from-muted/30 to-muted/70" />
+      <ItemGrid3D items={items} onCount={setModels} />
       <p className="text-xs text-muted-foreground">
-        {picked ? 'Pick another item in Item relations below, or show the whole subsystem.'
-          : `${state.shown} of ${total} item${total === 1 ? '' : 's'} shown, one of each line${total > MAX_ITEMS ? ` (first ${MAX_ITEMS})` : ''}. Pick an item below to see it alone.`}
-        {state.shown > 0 && ` ${state.models} from the item library, the rest drawn from size.`}
+        No assembly model for this node, so its items are shown side by side ({items.length} of {all.length}{all.length > MAX_ITEMS ? `, first ${MAX_ITEMS}` : ''}). {models} from the item library, the rest drawn from size.
       </p>
     </div>
   );

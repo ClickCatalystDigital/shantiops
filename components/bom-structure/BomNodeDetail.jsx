@@ -19,7 +19,7 @@ import NodeHistoryTab from './NodeHistoryTab';
 import SaveAsTemplateDialog from './SaveAsTemplateDialog';
 
 export default function BomNodeDetail({
-  node, path, projectId, projectBom, assemblies, unassignedItems, byId,
+  node, path, projectId, capacity, projectBom, assemblies, unassignedItems, byId,
   onSaveQty, onSaveNodeType, onRename, onMoveTo, onDuplicate, onDelete, onSaved, onLinkChange,
   onApplyTemplate, onSaveAsTemplate, onSaveConfig, canMarkTemplates = false,
 }) {
@@ -111,7 +111,7 @@ export default function BomNodeDetail({
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsContent value="overview" className="animate-in fade-in-0 slide-in-from-bottom-1 duration-150">
-          <NodeOverviewTab node={node} byId={byId}
+          <NodeOverviewTab node={node} byId={byId} capacity={capacity}
             onSaveQty={q => onSaveQty(node, q)} onSaveNodeType={t => onSaveNodeType(node, t)}
             onApplyTemplate={templateIds => onApplyTemplate(node, templateIds)}
             onSaveConfig={onSaveConfig ? config => onSaveConfig(node, config) : undefined}
