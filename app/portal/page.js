@@ -31,7 +31,8 @@ export default async function MyOrders(props) {
   let viewing = user;
   let viewAs = null;
   let previewCustomerId = null; // "Customer portal" preview of a customer who has no login yet
-  if (isCustomer(user) && user.must_change_password) redirect('/change-password');
+  // The public demo enters a customer without a password (and blocks password changes), so it skips this step.
+  if (isCustomer(user) && user.must_change_password && process.env.DEMO_MODE !== '1') redirect('/change-password');
   if (!isCustomer(user)) {
     if (searchParams?.as && isDepartmentHead(user, 'Sales')) {
       viewAs = await queryOne("SELECT id, username, display_name, project_ids FROM users WHERE id = ? AND role = 'customer'", [searchParams.as]);
