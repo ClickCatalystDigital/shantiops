@@ -14,9 +14,9 @@
 
 // const STAGES = [
 //   { key: 'concept', label: 'Concept', tone: 'plain', help: 'A calc sheet exists but has no saved snapshot yet — inputs are still being worked out.' },
-//   { key: 'calculation', label: 'Calculation', tone: 'enquiry', help: 'At least one snapshot has been saved, but the methodology it used isn’t fully approved yet.' },
+//   { key: 'calculation', label: 'Calculation', tone: 'enquiry', help: 'At least one snapshot has been saved, but the formulas it used isn’t fully approved yet.' },
 //   { key: 'review', label: 'Review', tone: 'comparison', help: 'Every formula the latest snapshot used is approved, but a drawing on this project is still in progress or under review.' },
-//   { key: 'approved', label: 'Approved', tone: 'ordered', help: 'Calculations are on approved methodology and every drawing is approved.' },
+//   { key: 'approved', label: 'Approved', tone: 'ordered', help: 'Calculations are on approved formulas and every drawing is approved.' },
 //   { key: 'released', label: 'Released', tone: 'received', help: 'At least one drawing is marked As-built — released to the shop floor.' },
 // ];
 
@@ -163,9 +163,9 @@ import { InfoIcon, ChevronRightIcon, CheckIcon } from 'lucide-react';
 
 const STAGES = [
   { key: 'concept', label: 'Concept', tone: 'plain', help: 'A calc sheet exists but has no saved snapshot yet — inputs are still being worked out.' },
-  { key: 'calculation', label: 'Calculation', tone: 'enquiry', help: 'At least one snapshot has been saved, but the methodology it used isn’t fully approved yet.' },
+  { key: 'calculation', label: 'Calculation', tone: 'enquiry', help: 'At least one snapshot has been saved, but the formulas it used isn’t fully approved yet.' },
   { key: 'review', label: 'Review', tone: 'comparison', help: 'Every formula the latest snapshot used is approved, but a drawing on this project is still in progress or under review.' },
-  { key: 'approved', label: 'Approved', tone: 'ordered', help: 'Calculations are on approved methodology and every drawing is approved.' },
+  { key: 'approved', label: 'Approved', tone: 'ordered', help: 'Calculations are on approved formulas and every drawing is approved.' },
   { key: 'released', label: 'Released', tone: 'received', help: 'At least one drawing is marked As-built — released to the shop floor.' },
 ];
 
