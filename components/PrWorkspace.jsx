@@ -151,8 +151,10 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
       <div className={`grid gap-3 ${showSizeSpecInput ? 'grid-cols-2' : 'grid-cols-1'}`}>
         <div className="flex flex-col gap-1.5">
           <Label>MOC {dimensional ? <span className="text-danger">*</span> : '(optional)'}</Label>
-          <SearchableSelect value={mocCustomOpen ? '' : (line.moc || '')} placeholder="Type to search a material…"
+          <SearchableSelect value={mocCustomOpen ? '' : (line.moc || '')} placeholder="Type to search, or type your own grade…"
             options={MOC_OPTIONS}
+            displayValue={mocCustomOpen ? '' : (line.moc || '')}
+            onTextChange={t => { setMocCustomOpen(false); setLine({ moc: t }); }}
             onChange={v => {
               if (v === OTHER_MOC) { setMocCustomOpen(true); return; }
               setMocCustomOpen(false);
@@ -212,7 +214,8 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
         </div>
       )}
 
-      {(src === 'bom' || src === 'trade') && line.category && (
+      {/* Standard/Other lines have no shape: the catalog link and the split's quantity already say what's bought. */}
+      {(src === 'bom' || src === 'trade') && DIMENSIONAL_CATEGORIES.includes(line.category) && (
         // Dimensional: what's being *bought* — Thickness (plate) / Diameter+Size+kg-per-m (tube/
         // rolled) / the one shape dimension (round/square/octagonal/flat) — the fields shared by
         // every project on this PR line, since they determine which raw stock gets purchased. Never
@@ -505,7 +508,7 @@ function validateBomLine(l) {
   if (l.category) {
     // MOC matters for cut stock (plates, sections): remnant matching checks it. Consumables and bought-out items may have none.
     if (DIMENSIONAL_CATEGORIES.includes(l.category) && !l.moc.trim()) return `${CATEGORY_LABEL[l.category]} needs an MOC — that's what remnant matching checks against`;
-    const forms = DIMENSIONAL_CATEGORIES.includes(l.category) ? l.projects.map(p => mergedProjectFields(l, p)) : [l.categoryFields];
+    const forms = DIMENSIONAL_CATEGORIES.includes(l.category) ? l.projects.map(p => mergedProjectFields(l, p)) : [];
     for (const f of forms) {
       const err = validateCategoryFields(l.category, f);
       if (err) return `${CATEGORY_LABEL[l.category]} ${err}`;
@@ -575,7 +578,7 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
       if (!l.projects[0]?.qty_text?.trim()) return showToast('Every line needs a quantity', 'error');
       if (l.category) {
         if (DIMENSIONAL_CATEGORIES.includes(l.category) && !l.moc.trim()) return showToast(`${CATEGORY_LABEL[l.category]} needs an MOC`, 'error');
-        const err = validateCategoryFields(l.category, l.categoryFields);
+        const err = DIMENSIONAL_CATEGORIES.includes(l.category) && validateCategoryFields(l.category, l.categoryFields);
         if (err) return showToast(`${CATEGORY_LABEL[l.category]} ${err}`, 'error');
       }
     }
