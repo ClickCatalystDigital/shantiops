@@ -27,12 +27,19 @@ if (us) {
 }
 
 const { items } = JSON.parse(readFileSync(file, 'utf8'));
+const OTHER = new Set(['cable', 'lighting', 'chemical', 'lubricant', 'tool', 'welding', 'refractory', 'insulation', 'safety_ppe',
+  'construction_material', 'it_equipment', 'material_handling']);
 const category = it => {
   const f = `${it.family} ${it.name}`.toLowerCase();
-  if (/plate|sheet/.test(f) && !/flange/.test(f)) return 'plate';
+  if (OTHER.has(it.family)) return 'other';
+  if (/\bangle\b|\bisa\b/.test(f)) return 'angle';
+  if (/channel|\bismc\b/.test(f) && !/cable/.test(f)) return 'channel';
+  if (/\bbeam\b|\bismb\b/.test(f)) return 'beam';
+  if (/plate|sheet/.test(f) && !/flange|name plate/.test(f)) return 'plate';
+  if (/square/.test(f) && /bar|rod/.test(f)) return 'square';
   if (/fin flat|^flat|\bflat\b/.test(f)) return 'flat';
-  if (/\bround\b|\bbar\b/.test(f) && !/fin/.test(f)) return 'round';
-  if (/^pipe_straight|^pipe |^tube|seamless .*pipe|\btube\b/.test(f) && !/elbow|tee|spool|stack|standpipe/.test(f)) return 'pipe';
+  if (/\bround\b|\brod\b|\bbar\b/.test(f) && !/fin|grate|fire bar/.test(f)) return 'round';
+  if (/^pipe |^pipe_straight|^tube|seamless .*pipe|\btube\b/.test(f) && !/elbow|tee|spool|stack|standpipe|bend|reducer|gauge|plate/.test(f)) return 'pipe';
   return 'standard';
 };
 // The seeded starter items, each pointed at the closest workbench model (valves have none: the app draws them).
