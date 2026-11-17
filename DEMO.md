@@ -108,6 +108,8 @@ forward by *today − `demo_meta.seeded_on`* (the seed writes that row). Every t
    every other customer with a Sale Order, so each is under Customer on /demo.
 6. `TURSO_URL=<golden url> TURSO_AUTH_TOKEN=… node scripts/demo/load-item-catalog.mjs ../items/exports/sbops/IN/catalog.json --apply`
    — the items workbench's catalogue in the Item Master (US: `--us scripts/demo/us-items.json`, links the seeded items).
+   India: then `DB_URL=… DB_TOKEN=… BASE=… ADMIN_PASSWORD=… node scripts/demo/link-ab1006-items.mjs --apply` links every
+   AB-1006 line (the video's order) to the Item Master, adding its shop-made parts as Manufactured items.
    Re-export first if the workbench changed: `cd ../items && ahrom_usd/.venv/bin/python sbops_export.py`, then copy
    `exports/sbops/{IN,US}/models` to `public/models/{in,us}`.
 7. `DB_URL=… DB_TOKEN=… BASE=… ADMIN_PASSWORD=… node scripts/demo/scrub-check.mjs` — database, browser bundle (after `npm run cf:build`), PDF templates, AI prompts, pages, and every PDF the demo prints; must report 0 hits.
