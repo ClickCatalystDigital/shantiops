@@ -150,7 +150,7 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
           BomTable.jsx's own composer already applies. */}
       <div className={`grid gap-3 ${showSizeSpecInput ? 'grid-cols-2' : 'grid-cols-1'}`}>
         <div className="flex flex-col gap-1.5">
-          <Label>MOC {line.category ? <span className="text-danger">*</span> : '(optional)'}</Label>
+          <Label>MOC {dimensional ? <span className="text-danger">*</span> : '(optional)'}</Label>
           <SearchableSelect value={mocCustomOpen ? '' : (line.moc || '')} placeholder="Type to search a material…"
             options={MOC_OPTIONS}
             onChange={v => {
@@ -160,7 +160,7 @@ function LineCard({ line, index, projects, inventoryItems, showSourcePicker, onC
             }} />
           {mocCustomOpen && (
             <Input className="mt-1" value={line.moc} onChange={e => setLine({ moc: e.target.value })}
-              placeholder="e.g. IS 2062 E250" required={!!line.category} autoFocus />
+              placeholder="e.g. IS 2062 E250" required={dimensional} autoFocus />
           )}
         </div>
         {showSizeSpecInput && (
@@ -503,7 +503,8 @@ function validateBomLine(l) {
   if (!l.material_description.trim()) return 'Every line needs a description';
   if (l.projects.some(p => !p.qty_text.trim())) return 'Every split needs a quantity';
   if (l.category) {
-    if (!l.moc.trim()) return `${CATEGORY_LABEL[l.category]} needs an MOC — that's what remnant matching checks against`;
+    // MOC matters for cut stock (plates, sections): remnant matching checks it. Consumables and bought-out items may have none.
+    if (DIMENSIONAL_CATEGORIES.includes(l.category) && !l.moc.trim()) return `${CATEGORY_LABEL[l.category]} needs an MOC — that's what remnant matching checks against`;
     const forms = DIMENSIONAL_CATEGORIES.includes(l.category) ? l.projects.map(p => mergedProjectFields(l, p)) : [l.categoryFields];
     for (const f of forms) {
       const err = validateCategoryFields(l.category, f);
@@ -573,7 +574,7 @@ export function RaisePrTab({ departments, projects, inventoryItems = [], prTempl
       if (!l.material_description.trim()) return showToast('Every line needs a description', 'error');
       if (!l.projects[0]?.qty_text?.trim()) return showToast('Every line needs a quantity', 'error');
       if (l.category) {
-        if (!l.moc.trim()) return showToast(`${CATEGORY_LABEL[l.category]} needs an MOC`, 'error');
+        if (DIMENSIONAL_CATEGORIES.includes(l.category) && !l.moc.trim()) return showToast(`${CATEGORY_LABEL[l.category]} needs an MOC`, 'error');
         const err = validateCategoryFields(l.category, l.categoryFields);
         if (err) return showToast(`${CATEGORY_LABEL[l.category]} ${err}`, 'error');
       }
