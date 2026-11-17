@@ -64,7 +64,7 @@ export default async function ProjectDetail(props) {
   const canDeleteProject = isPM(user) || isDepartmentHead(user, 'Design') || isDepartmentHead(user, 'Engineering');
 
   const [
-    { bom, pending, imports }, packingLists, designSummary, scopeOfSupply, departmentState, qcSummary,
+    { bom, pending, imports, readyForPacking }, packingLists, designSummary, scopeOfSupply, departmentState, qcSummary,
     jobCards, materialIndents, inventoryItems, assemblies, editCustomers,
   ] = await Promise.all([
     getProjectBom(params.id),
@@ -120,13 +120,18 @@ export default async function ProjectDetail(props) {
   // the card's own content, using signals that are realistically forward-only in normal operation
   // (purchase_status advancement, job cards/packing lists that are never deleted) so a card doesn't
   // flicker away once the underlying work finishes — see the plan's own Part 6/J note on this.
-  const showProcurement = isDepartmentEnabled('Procurement') && bom.length > 0;
+  // A department's card appears when the project reaches it. Procurement: BOM released, or a line
+  // Procurement already sees (raised by a Purchase Request, or past Enquiry).
+  const bomReleased = milestones.some(m => m.milestone_key === 'release_bom' && m.status === 'done');
+  const showProcurement = isDepartmentEnabled('Procurement')
+    && (bomReleased || bom.some(b => b.pr_item_id || (b.purchase_status && b.purchase_status !== 'Enquiry')));
   const showStores = isDepartmentEnabled('Stores') && bom.some(b => ['Transit', 'Received', 'In-Stock'].includes(b.purchase_status));
-  const showProduction = isDepartmentEnabled('Production') && jobCards.length > 0 || materialIndents.length > 0;
+  const showProduction = isDepartmentEnabled('Production') && (jobCards.length > 0 || materialIndents.length > 0);
   // QC always sees it ("None filed yet" + Manage documents) so there is a way in before the first document exists.
   const showQc = qcSummary.docs_total > 0 || qcSummary.ncrs_total > 0 || canAccessDepartment(user, 'QC');
-  // Always there once packing lists can exist — a split master keeps them on its units instead.
-  const showDispatch = isDepartmentEnabled('Dispatch') && (packingLists.length > 0 || !hasChildren);
+  // Dispatch: something is ready to pack (handed over by Production, or routed straight to Dispatch),
+  // or a packing list exists. A split master keeps its lists on its units.
+  const showDispatch = isDepartmentEnabled('Dispatch') && (packingLists.length > 0 || (!hasChildren && readyForPacking?.length > 0));
 
   // Customer portal card (PM): the project's customer, or its master's for a split unit.
   const portalCustomer = pm && !project.master_project_id && project.customer_id

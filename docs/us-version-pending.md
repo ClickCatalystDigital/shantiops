@@ -60,3 +60,11 @@ databases (`sb-us-demo-golden`, `sb-us-demo`). It is not deployed by the main-br
 2. `npm run check`.
 3. `CUSTOMER_SEED="$(cat scripts/demo/acme-us-seed.json)" TURSO_URL=libsql://sb-us-demo-golden-pujan.aws-ap-south-1.turso.io TURSO_AUTH_TOKEN=… node scripts/migrate-db.mjs`, then the same for `sb-us-demo`.
 4. `npm run deploy:demo:us`, then check boiler-erp-us.ahromlabs.com.
+
+## From the India video prep (2026-11-17, `docs/demo-video-plan.md`)
+
+- Merge the card-visibility fix and the demo-only simulated e-way bill (US has no e-way bill: hide that card on US).
+- Project counter on `sb-us-demo-golden` may also lag its seeded projects: check `counters.project_no`.
+- Item Master: copy a US-unit catalogue (not the client's India items) so US BOM lines link.
+- US needs its own SO-6 equivalent order with a full BOM (12 subsystems) and its own fast-forward script.
+- Accounts seed (fixed assets, tax filings, bank reconciliation) in US terms (sales tax, no GST/TDS).

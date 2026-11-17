@@ -772,6 +772,9 @@ for (const p of [p4, p5]) {
   await orderPayment(p, Math.round(total * 0.3), -p.orderAgo + 5, 'Advance with order');
 }
 await q("UPDATE projects SET owner = 'manager' WHERE project_no LIKE 'AB-%'");
+// Projects above are numbered by hand, so move the counter past them: a blank "auto" number on New Project is AB-1006.
+await q(`INSERT INTO counters (name, value) VALUES ('project_no', 1005)
+         ON CONFLICT(name) DO UPDATE SET value = MAX(value, 1005)`);
 await seedTasks(projects);
 await seedAttendance();
 await seedHrAndPayables([p1, p2, p3], p5);
