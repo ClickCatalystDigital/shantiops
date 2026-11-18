@@ -312,6 +312,32 @@
       ],
       "port": 3070,
       "autoPort": false
+    },
+    {
+      "name": "shanti-ops-qc-only",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ENABLED_DEPARTMENTS=QC",
+        "NEXT_DEV_NO_CACHE=1",
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3080"
+      ],
+      "port": 3080,
+      "autoPort": false
+    },
+    {
+      "name": "golden-test",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "CUSTOMER_SEED=\"$(cat scripts/demo/acme-seed.json)\" TURSO_URL=file:.demo-backups/golden-test.db NEXT_DEV_NO_CACHE=1 npm run dev -- -p 3090"
+      ],
+      "port": 3090,
+      "autoPort": false
     }
   ]
 }
