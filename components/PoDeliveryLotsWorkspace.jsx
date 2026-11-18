@@ -283,7 +283,10 @@ function LotDialogItemRow({ item, remaining, qty, checkedChildIds, onQtyChange, 
 }
 
 function LotDialog({ poId, items, existingLotsCount, editingLot, onClose, onSaved }) {
-  const [expectedDate, setExpectedDate] = useState(editingLot?.expected_delivery_date || '');
+  // A new lot starts on the earliest supplier (RFQ) date among lines not yet scheduled; editable.
+  const [expectedDate, setExpectedDate] = useState(() => editingLot?.expected_delivery_date || items
+    .filter(it => it.unallocated_qty > 0 && it.rfq_expected_delivery_date)
+    .map(it => String(it.rfq_expected_delivery_date).slice(0, 10)).sort()[0] || '');
   const [lotLabel, setLotLabel] = useState(editingLot?.lot_label || '');
   const [notes, setNotes] = useState(editingLot?.notes || '');
   const [qtyByItem, setQtyByItem] = useState(() => {

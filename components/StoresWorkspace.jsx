@@ -1898,6 +1898,18 @@ function GirFormDialog({ editing, onClose, router }) {
     security_remarks: editing.security_remarks || '',
   } : { vehicle_no: '', supplier_name: '', driver_name: '', material_ref: '', security_seal_ok: false, security_docs_ok: false, security_remarks: '' });
   const [saving, setSaving] = useState(false);
+  const [expected, setExpected] = useState([]);
+  useEffect(() => { api('/api/gate-inward-receipts?expected=1').then(setExpected).catch(() => {}); }, []);
+
+  // Picking an expected supplier fills the PO numbers (and the vehicle / invoice the supplier
+  // recorded on their dispatch) into blank fields only.
+  function pickSupplier(name) {
+    const e = expected.find(x => x.supplier_name === name);
+    if (!e) return setForm(f => ({ ...f, supplier_name: name }));
+    const withTruck = e.pos.find(p => p.vehicle_no) || {};
+    const ref = [e.pos.map(p => p.po_no).join(', '), withTruck.invoice_no && `Inv ${withTruck.invoice_no}`].filter(Boolean).join(' · ');
+    setForm(f => ({ ...f, supplier_name: name, material_ref: f.material_ref || ref, vehicle_no: f.vehicle_no || withTruck.vehicle_no || '' }));
+  }
 
   async function save() {
     setSaving(true);
@@ -1926,7 +1938,14 @@ function GirFormDialog({ editing, onClose, router }) {
           </div>
           <div className="grid gap-1.5">
             <Label>Supplier</Label>
-            <Input value={form.supplier_name} onChange={e => setForm({ ...form, supplier_name: e.target.value })} />
+            <SearchableSelect
+              options={expected.map(e => ({ value: e.supplier_name, label: `${e.supplier_name} — ${e.pos.map(p => p.po_no).join(', ')}${e.pos.some(p => p.vehicle_no) ? ' · on the way' : ''}` }))}
+              value={form.supplier_name}
+              displayValue={form.supplier_name}
+              onTextChange={t => setForm(f => ({ ...f, supplier_name: t }))}
+              onChange={v => pickSupplier(v || '')}
+              placeholder="Expected suppliers, or type a name…"
+            />
           </div>
           <div className="grid gap-1.5">
             <Label>Driver</Label>
