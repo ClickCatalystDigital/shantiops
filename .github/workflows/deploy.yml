@@ -3,6 +3,8 @@
 #   2. demo    - update the demo databases' schema, deploy the Cloudflare demo, check it serves this commit
 #   3. client  - update the client database schema, deploy the client Worker (sbops.ahromlabs.com),
 #                check it serves this commit. Needs CLIENT_DB_URL / CLIENT_DB_TOKEN in the "client" environment.
+#   us-demo - on a push to the demo-us branch instead: update the US demo databases, deploy boiler-erp-us,
+#             check it serves this commit. To ship main to the US demo: merge main into demo-us and push.
 # A new customer server = one more job like `client`, needing the one before it.
 #
 # Repository secrets (Settings > Secrets and variables > Actions):
@@ -14,7 +16,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, demo-us]
   workflow_dispatch:
 
 concurrency:
@@ -33,6 +35,7 @@ jobs:
 
   demo:
     needs: checks
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: demo
     steps:
@@ -99,3 +102,29 @@ jobs:
       - name: Check the client site serves this commit
         if: env.HAS_CLIENT == 'true'
         run: node scripts/wait-for-commit.mjs https://sbops.ahromlabs.com "$GITHUB_SHA" /login
+
+  us-demo:
+    needs: checks
+    if: github.ref == 'refs/heads/demo-us'
+    # Same Cloudflare account and Turso group (DEMO_DB_TOKEN) as the Indian demo; the US database URLs are in wrangler.us.jsonc.
+    runs-on: ubuntu-latest
+    environment: demo
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Update US demo database schema (golden first, then live)
+        env:
+          TURSO_AUTH_TOKEN: ${{ secrets.DEMO_DB_TOKEN }}
+        run: |
+          export CUSTOMER_SEED="$(cat scripts/demo/acme-us-seed.json)" MARKET=NA
+          node scripts/gen-migrate-fingerprint.mjs
+          TURSO_URL=libsql://sb-us-demo-golden-pujan.aws-ap-south-1.turso.io GITHUB_OUTPUT=/dev/null node scripts/migrate-db.mjs
+          TURSO_URL=libsql://sb-us-demo-pujan.aws-ap-south-1.turso.io GITHUB_OUTPUT=/dev/null node scripts/migrate-db.mjs
+      - name: Build and deploy the US demo Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run deploy:demo:us || (echo "retrying once" && sleep 20 && npm run deploy:demo:us)
+      - name: Check the US demo serves this commit
+        run: node scripts/wait-for-commit.mjs https://boiler-erp-us.ahromlabs.com "$GITHUB_SHA" /demo
