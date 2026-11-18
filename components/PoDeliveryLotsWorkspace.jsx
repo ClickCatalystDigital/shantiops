@@ -51,10 +51,18 @@ export default function PoDeliveryLotsWorkspace({ purchaseOrders }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLot, setEditingLot] = useState(null);
 
-  const issuedOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'issued'), [purchaseOrders]);
+  const [showReceived, setShowReceived] = useState(false);
+  // Newest first; fully received POs (every line resolved) hidden unless asked, but the open one stays listed.
+  const issuedOrders = useMemo(() => purchaseOrders
+    .filter(po => po.status === 'issued')
+    .sort((a, b) => String(b.issued_at || '').localeCompare(String(a.issued_at || '')) || b.id - a.id),
+  [purchaseOrders]);
+  const receivedCount = issuedOrders.filter(po => po.fulfilled).length;
   const poOptions = useMemo(
-    () => issuedOrders.map(po => ({ value: String(po.id), label: `${po.po_no} — ${po.supplier_name}` })),
-    [issuedOrders]
+    () => issuedOrders
+      .filter(po => showReceived || !po.fulfilled || po.id === poId)
+      .map(po => ({ value: String(po.id), label: `${po.po_no} — ${po.supplier_name}${po.fulfilled ? ' (received)' : ''}` })),
+    [issuedOrders, showReceived, poId]
   );
 
   function refetch(id) {
@@ -99,7 +107,7 @@ export default function PoDeliveryLotsWorkspace({ purchaseOrders }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {issuedOrders.length ? (
+          {issuedOrders.length ? (<>
             <SearchableSelect
               options={poOptions}
               value={poId ? String(poId) : ''}
@@ -107,7 +115,13 @@ export default function PoDeliveryLotsWorkspace({ purchaseOrders }) {
               placeholder="Search by PO number or supplier…"
               className="max-w-md"
             />
-          ) : (
+            {receivedCount > 0 && (
+              <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={showReceived} onChange={e => setShowReceived(e.target.checked)} />
+                Show fully received POs ({receivedCount})
+              </label>
+            )}
+          </>) : (
             <p className="text-sm text-muted-foreground">No issued purchase orders yet — issue a PO first.</p>
           )}
         </CardContent>

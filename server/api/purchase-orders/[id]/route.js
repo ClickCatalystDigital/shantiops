@@ -115,15 +115,23 @@ export async function PATCH(req, props) {
 
   if (b.action === 'cancel') {
     if (po.status === 'cancelled') return NextResponse.json({ error: 'Already cancelled' }, { status: 400 });
+    const sent = await queryOne('SELECT COUNT(*) AS n FROM po_dispatches WHERE po_id = ?', [po.id]);
+    if (Number(sent.n) > 0) return NextResponse.json({ error: 'The supplier has already recorded a dispatch against this PO, so it can no longer be cancelled.' }, { status: 409 });
     await execute(
       "UPDATE purchase_orders SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP, cancel_reason = ? WHERE id = ?",
       [b.reason || null, po.id]
     );
-    // Items keep their selected_quote_id (they go back to "to order", not all the way back to "to
-    // source") — only the po_ref stamp clears, so ProcurementQueue stops counting them as placed.
+    // Lines go back to sourcing: supplier choice and po_ref cleared, Ordered -> Comparison (quotes
+    // kept, so it shows in Enquiry and Selection again). They used to keep selected_quote_id and stay
+    // 'Ordered', which hid them from every Procurement tab with no way to order them again.
     const items = await queryAll('SELECT bom_item_id FROM po_items WHERE po_id = ?', [po.id]);
     for (const it of items) {
-      if (it.bom_item_id) await execute('UPDATE bom_items SET po_ref = NULL WHERE id = ?', [it.bom_item_id]);
+      if (!it.bom_item_id) continue;
+      await execute(
+        `UPDATE bom_items SET po_ref = NULL, selected_quote_id = NULL,
+           purchase_status = CASE WHEN purchase_status IN ('Ordered','Comparison') THEN 'Comparison' ELSE purchase_status END
+         WHERE id = ?`, [it.bom_item_id]);
+      await execute('UPDATE supplier_quotes SET is_selected = NULL WHERE bom_item_id = ?', [it.bom_item_id]);
     }
     await audit('po_cancelled', { actor: user.username, detail: `${po.po_no}: ${b.reason || ''}` });
     return NextResponse.json({ ok: true });
