@@ -19,6 +19,9 @@ const WORKERS = process.env.SB_TARGET === 'workers';
 const devPort = process.env.PORT && process.env.PORT !== '3000' ? process.env.PORT : null;
 
 /** @type {import('next').NextConfig} */
+// A build made by hand (no CI variable) still reports its commit at /api/version.
+function gitSha() { try { return require('child_process').execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return ''; } }
+
 module.exports = {
   reactStrictMode: true,
   ...(devPort ? { distDir: `.next-${devPort}` } : {}),
@@ -32,7 +35,7 @@ module.exports = {
   // DEMO_BUILD: '1' only in the public demo's Workers build. Client code tests it to leave the real
   // customer's names out of the demo bundle (the dead branch is dropped at build); Render builds and the
   // client's own Workers build (npm run cf:deploy:client sets SB_CLIENT_BUILD=1) get ''.
-  env: { BUILD_COMMIT: process.env.RENDER_GIT_COMMIT || process.env.GITHUB_SHA || '', DEMO_BUILD: WORKERS && process.env.SB_CLIENT_BUILD !== '1' ? '1' : '' },
+  env: { BUILD_COMMIT: process.env.RENDER_GIT_COMMIT || process.env.GITHUB_SHA || gitSha(), DEMO_BUILD: WORKERS && process.env.SB_CLIENT_BUILD !== '1' ? '1' : '' },
   // Cloudflare Workers build (npm run cf:build sets SB_TARGET=workers): libsql's web client instead
   // of the Node one, and its files traced in (Next's tracing only follows the Node entry).
   ...(WORKERS ? {
