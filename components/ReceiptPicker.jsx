@@ -42,6 +42,23 @@ export default function ReceiptPicker({ value, onChange, requireInvoice = false 
     api('/api/gate-inward-receipts').then(rows => setGirEntries(rows.filter(g => g.status === 'open'))).catch(() => {});
   }, []);
 
+  // Picking the gate entry the truck came in on fills what the gate already wrote down: supplier by
+  // name, PO by its number in the material reference, invoice from "Inv …". Only blank fields.
+  function pickGir(id) {
+    setGirId(id);
+    const g = girEntries.find(x => String(x.id) === id);
+    if (!g) return;
+    const name = (g.supplier_name || '').trim().toLowerCase();
+    const sup = name && suppliers.find(s => s.name?.trim().toLowerCase() === name);
+    const ref = g.material_ref || '';
+    const po = purchaseOrders.find(p => p.po_no && ref.includes(p.po_no) && (!sup || p.supplier_id === sup.id));
+    const inv = ref.match(/\bInv\.?\s*([^\s·,]+)/i)?.[1];
+    if (sup) setSupplierId(v => v || String(sup.id));
+    else if (po) setSupplierId(v => v || String(po.supplier_id));
+    if (po) setPoId(v => v || String(po.id));
+    if (inv) setInvoiceNo(v => v || inv);
+  }
+
   async function create() {
     if (!supplierId) return showToast('Choose a supplier', 'error');
     if (requireInvoice && !grnRef.trim()) return showToast('Enter the GRN number', 'error');
@@ -91,6 +108,18 @@ export default function ReceiptPicker({ value, onChange, requireInvoice = false 
         </div>
       ) : (
         <div className="flex flex-col gap-2">
+          {girEntries.length > 0 && (
+            <Select modal={false} value={girId} onValueChange={pickGir}>
+              <SelectTrigger className="w-72"><SelectValue placeholder="From gate entry (fills supplier, PO, invoice)" /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {girEntries.map(g => (
+                  <SelectItem key={g.id} value={String(g.id)}>
+                    GIR-{g.gir_no} · {g.vehicle_no || '—'} · {g.supplier_name || '—'}
+                  </SelectItem>
+                ))}
+              </SelectGroup></SelectContent>
+            </Select>
+          )}
           <div className="flex flex-wrap gap-2">
             <Select modal={false} value={supplierId} onValueChange={setSupplierId}>
               <SelectTrigger className="w-56"><SelectValue placeholder="Supplier *" /></SelectTrigger>
@@ -109,18 +138,6 @@ export default function ReceiptPicker({ value, onChange, requireInvoice = false 
             <Input className="w-40" placeholder={requireInvoice ? 'Invoice No *' : 'Invoice No (optional)'}
               value={invoiceNo} onChange={e => setInvoiceNo(e.target.value)} required={requireInvoice} />
           </div>
-          {girEntries.length > 0 && (
-            <Select modal={false} value={girId} onValueChange={setGirId}>
-              <SelectTrigger className="w-72"><SelectValue placeholder="Link a gate entry (optional)" /></SelectTrigger>
-              <SelectContent><SelectGroup>
-                {girEntries.map(g => (
-                  <SelectItem key={g.id} value={String(g.id)}>
-                    GIR-{g.gir_no} · {g.vehicle_no || '—'} · {g.supplier_name || '—'}
-                  </SelectItem>
-                ))}
-              </SelectGroup></SelectContent>
-            </Select>
-          )}
           <div className="flex gap-2">
             <Button type="button" size="sm" disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create receipt'}</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setCreating(false)}>Cancel</Button>
