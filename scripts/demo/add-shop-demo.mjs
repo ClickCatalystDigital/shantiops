@@ -11,7 +11,7 @@
 import { createClient } from '@libsql/client';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
-import { DENY, DENY_WORDS } from './deny-list.mjs';
+import { denyRe, clean, TYPES } from './deny-list.mjs';
 import { shopGroupOf, HIDDEN, SHOP_GROUPS } from '../../lib/shop-catalog.mjs';
 
 const apply = process.argv.includes('--apply');
@@ -20,29 +20,6 @@ if (!targets.length) { console.error('DB_TOKEN and at least one target URL are r
 
 export const CUSTOMER_LOGIN = { username: 'greenfield_foods', project_no: 'AB-1005', customer: 'Greenfield Foods Pvt Ltd' };
 
-const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const denyRe = new RegExp([...DENY.map(esc), ...DENY_WORDS.map(w => `\\b${esc(w)}\\b`)].join('|'), 'i');
-
-// Boiler families get the generic names the Shop also understands (lib/shop-catalog.mjs).
-const TYPES = { 'SOLID-FLAME': 'Solid Fuel', 'SOLID FLAME': 'Solid Fuel', 'COMBI-FLAME': 'Combination Fuel', 'COMBI FLAME': 'Combination Fuel',
-  'MULTI-FLAME': 'Multi Fuel', 'MULTI FLAME': 'Multi Fuel', 'OIL-FLAME': 'Oil Fuel', 'OIL FLAME': 'Oil Fuel',
-  'GAS-FLAME': 'Gas Fuel', 'GAS FLAME': 'Gas Fuel', 'AGRO-FLAME': 'Agro Fuel', 'AGRO FLAME': 'Agro Fuel' };
-const FAMILY = { solid: 'Solid Fuel', combi: 'Combination Fuel', multi: 'Multi Fuel', oil: 'Oil Fuel', gas: 'Gas Fuel', agro: 'Agro Fuel' };
-const REPL = [
-  [/\b(solid|combi|multi|oil|gas|agro)[- ]?flame/gi, (_, f) => FAMILY[f.toLowerCase()]],
-  [/shanti\s*boilers?(\s*&\s*pressure\s*vessels)?(\s*\(p\))?(\s*(pvt\.?|private))?(\s*(ltd\.?|limited))?/gi, 'Acme Boilers'],
-  [/shanti\s*techno\s*fab(\s*(pvt\.?|private))?(\s*(ltd\.?|limited))?/gi, 'Acme Boilers'],
-  [/shantiboilers/gi, 'acmeboilers'], [/shanti|srivaari/gi, 'Acme'],
-  [/\bSTF-IBR/gi, 'AB-IBR'], [/\b(SBH|STF|SBPV)\b/g, 'AB'], [/\bSB-/g, 'AB-'], [/\bHKM\b/gi, 'customer'],
-  [/36AA[A-Z0-9]{11}|AA[EV]CS\d{4}[A-Z]/g, ''],
-  [/nacharam|kucharam|kuncharam|toopran/gi, 'Pune'], [/telangana/gi, 'Maharashtra'], [/hyderabad/gi, 'Pune'],
-];
-export function clean(s) {
-  if (s == null) return s;
-  let t = String(s);
-  for (const [re, to] of REPL) t = t.replace(re, to);
-  return t;
-}
 const cleanType = t => (t == null ? t : TYPES[String(t).trim().toUpperCase()] || clean(t));
 
 const rows = !process.env.SRC_URL ? [] : (await createClient({ url: process.env.SRC_URL, authToken: process.env.SRC_TOKEN }).execute(`SELECT product_code, product_name, product_type, description, unit, hsn_code, gst_pct,

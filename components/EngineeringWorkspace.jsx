@@ -484,7 +484,9 @@ function ProjectHeaderBar({
 // ---------- Shell ----------
 
 export default function EngineeringWorkspace({ projects, canApproveEcn = false, canClearBom = false, canMarkTemplates = false, initialTab, initialProject, departments = [] }) {
-  const [tab, setTab] = useState(ITEMS.some(i => i.key === initialTab) ? initialTab : 'structure');
+  // Approving Design is the Design Head's step: Engineering-only logins don't see the tab.
+  const items = departments.includes('Design') ? ITEMS : ITEMS.filter(i => i.key !== 'design_signoff');
+  const [tab, setTab] = useState(items.some(i => i.key === initialTab) ? initialTab : 'structure');
   // Same small cross-tab handoff PrWorkspace.jsx owns internally for its own "PR Templates" tab —
   // reusing this workspace's existing setTab instead of a second tab-state.
   const [prTemplatePrefill, setPrTemplatePrefill] = useState(null);
@@ -520,7 +522,7 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
   const showHeader = SINGLE_PROJECT_TABS.includes(tab) || MULTI_PROJECT_TABS.includes(tab);
 
   return (
-    <WorkspaceSidebar title="Engineering" icon={LayersIcon} items={ITEMS} activeKey={tab} onChange={setTab}
+    <WorkspaceSidebar title="Engineering" icon={LayersIcon} items={items} activeKey={tab} onChange={setTab}
       header={showHeader && (
         <ProjectHeaderBar tab={tab} projects={projects}
           globalProjectId={globalProjectId} setGlobalProjectId={setGlobalProjectId}
@@ -528,7 +530,7 @@ export default function EngineeringWorkspace({ projects, canApproveEcn = false, 
           globalProjectIds={globalProjectIds} setGlobalProjectIds={setGlobalProjectIds}
           onImported={() => setBomReloadNonce(n => n + 1)} />
       )}>
-      {tab === 'design_signoff' && <DesignSignoffTab projectId={globalProjectId} />}
+      {tab === 'design_signoff' && items.some(i => i.key === 'design_signoff') && <DesignSignoffTab projectId={globalProjectId} />}
       {tab === 'structure' && (
         <BomStructureWorkspace key={bomReloadNonce} projects={projects}
           projectId={globalProjectId} onProjectIdChange={setGlobalProjectId}
