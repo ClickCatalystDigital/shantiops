@@ -3674,6 +3674,8 @@ export default function SalesWorkspace({ saleOrders: saleOrdersPacked, leads: le
   const flat = groups.flatMap(g => g.items.flatMap(p => (p.group ? p.children : [p])));
   const [panel, setPanel] = useState(flat.some(p => p.key === initialTab) ? initialTab : 'leads');
   const activePanel = flat.find(p => p.key === panel) || flat[0];
+  // Every section visible, under a small label (same look as Accounts), instead of one group open at a time.
+  const navItems = groups.flatMap(g => [{ key: `divider-${g.label}`, divider: true, label: g.label }, ...g.items]);
   // The server sends only the open tab's large lists (lib/sales-tab-data.mjs). Opening a tab whose
   // lists aren't here asks the server for that tab; until they arrive the tab shows "Loading".
   const missing = loadedKeys && (SALES_TAB_DATA[activePanel.key] || []).some(k => !loadedKeys.includes(k));
@@ -3686,8 +3688,8 @@ export default function SalesWorkspace({ saleOrders: saleOrdersPacked, leads: le
   useEffect(() => { if (!missing) requested.current = null; }, [missing]);
 
   return (
-    <WorkspaceSidebar title="Sales" icon={TagIcon} groups={groups}
-      activeKey={panel} onChange={setPanel} searchPlaceholder="Search…" searchNoun="sections"
+    <WorkspaceSidebar title="Sales" icon={TagIcon} items={navItems}
+      activeKey={panel} onChange={setPanel}
       header={
         <>
           <activePanel.icon className="size-4 text-muted-foreground" />

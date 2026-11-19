@@ -156,15 +156,46 @@ export function InwardApprovalsPanel({ rows = [], canDecide = false }) {
 // ---------- Pre-Dispatch ----------
 
 const inr = n => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-function PaymentLine({ payment }) {
-  if (!payment) return <p className="text-xs text-warning">No invoice linked to this list yet.</p>;
+// Accounts' view in the review: invoice / received / due, how far paid, and the Sales log for the same order.
+function PaymentCard({ payment, saleOrder, canOpenSales }) {
+  if (!payment) return (
+    <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">No invoice is linked to this list yet, so there is nothing to check payment against.</div>
+  );
+  const pct = payment.total > 0 ? Math.min(100, Math.round((payment.received / payment.total) * 100)) : 0;
+  const paid = payment.balance <= 0;
+  const gap = saleOrder ? saleOrder.logged - payment.received : 0;
   return (
-    <p className="text-xs text-muted-foreground">
-      Invoice {payment.invoice_no}: {inr(payment.total)} · received {inr(payment.received)} ·{' '}
-      <span className={payment.balance > 0 ? 'font-medium text-warning' : 'font-medium text-success'}>
-        {payment.balance > 0 ? `${inr(payment.balance)} due` : 'fully paid'}
-      </span>
-    </p>
+    <div className="overflow-hidden rounded-lg border">
+      <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-3 py-2">
+        <span className="text-xs font-medium">Invoice {payment.invoice_no}</span>
+        <Badge variant={paid ? 'default' : 'secondary'}>{paid ? 'Fully paid' : payment.received > 0 ? `${pct}% paid` : 'Unpaid'}</Badge>
+      </div>
+      <div className="grid grid-cols-3 divide-x">
+        {[['Invoice value', payment.total, ''], ['Received', payment.received, 'text-success'], ['Balance due', Math.max(0, payment.balance), paid ? 'text-success' : 'text-warning']].map(([label, v, tone]) => (
+          <div key={label} className="px-3 py-2">
+            <p className="text-[11px] text-muted-foreground">{label}</p>
+            <p className={`text-sm font-semibold tabular-nums ${tone}`}>{inr(v)}</p>
+          </div>
+        ))}
+      </div>
+      <div className="h-1.5 bg-muted"><div className="h-full bg-success transition-all" style={{ width: `${pct}%` }} /></div>
+      {saleOrder && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-xs">
+          <span className="text-muted-foreground">
+            Sales payment log for{' '}
+            {canOpenSales
+              ? <a className="font-medium text-foreground underline-offset-2 hover:underline" href={`/sales/payment-orders?q=${encodeURIComponent(saleOrder.so_no)}&highlight=SO-${saleOrder.id}`} target="_blank" rel="noopener noreferrer">{saleOrder.so_no}</a>
+              : <span className="font-medium text-foreground">{saleOrder.so_no}</span>}
+          </span>
+          <span className="font-medium tabular-nums">{inr(saleOrder.logged)}</span>
+          {gap > 0 && (
+            <p className="w-full rounded bg-warning/10 px-2 py-1 text-warning">
+              Sales has logged {inr(gap)} more than Accounts has received. Check the bank before clearing.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -243,19 +274,10 @@ function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, canDeci
               </div>
               {detail.needsAccounts && (
                 <div className="sm:col-span-2">
-                  <p className="mb-1 text-xs font-medium">Accounts — payment received</p>
-                  <PaymentLine payment={detail.payment} />
-                  {detail.saleOrder && (
-                    <p className="text-xs text-muted-foreground">
-                      Order{' '}
-                      {detail.canOpenSales
-                        ? <a className="underline" href={`/sales/payment-orders?q=${encodeURIComponent(detail.saleOrder.so_no)}&highlight=SO-${detail.saleOrder.id}`} target="_blank" rel="noopener noreferrer">{detail.saleOrder.so_no}</a>
-                        : detail.saleOrder.so_no}
-                      : {inr(detail.saleOrder.total)} · Sales payment log {inr(detail.saleOrder.logged)}
-                    </p>
-                  )}
+                  <p className="mb-2 text-xs font-medium">Accounts decision</p>
+                  <PaymentCard payment={detail.payment} saleOrder={detail.saleOrder} canOpenSales={detail.canOpenSales} />
                   {a.accounts_decision ? (
-                    <p className="mt-1 text-xs">
+                    <p className="mt-2 text-xs">
                       <Badge variant={a.accounts_decision === 'approved' ? 'default' : 'destructive'}>{a.accounts_decision}</Badge>{' '}
                       {a.accounts_decided_by} · {formatDate(a.accounts_decided_at)}{a.accounts_reason ? ` — ${a.accounts_reason}` : ''}
                     </p>
