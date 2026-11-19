@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isPM, isInternal } from '@/lib/auth';
 import { requireAction, requireSalesOrAccountsAction } from '@/lib/action-permissions';
+import { isPaymentType } from '@/lib/payment-types.mjs';
 import { audit } from '@/lib/usb';
 import { notifyUsername } from '@/lib/notify';
 import { tabLink } from '@/lib/alert-links.mjs';
@@ -39,10 +40,11 @@ export async function POST(req) {
     if (!inv) return NextResponse.json({ error: 'Invoice does not belong to this Sale Order' }, { status: 400 });
   }
 
+  if (b.payment_type && !isPaymentType(b.payment_type)) return NextResponse.json({ error: 'Unknown payment type' }, { status: 400 });
   const { lastId } = await execute(
-    `INSERT INTO sale_order_payments (sale_order_id, sales_invoice_id, received_on, mode, amount, remark, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [so.id, b.sales_invoice_id || null, b.received_on, b.mode || null, amount, String(b.remark || '').trim() || null, user.username]
+    `INSERT INTO sale_order_payments (sale_order_id, sales_invoice_id, received_on, mode, amount, remark, payment_type, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [so.id, b.sales_invoice_id || null, b.received_on, b.mode || null, amount, String(b.remark || '').trim() || null, b.payment_type || null, user.username]
   );
   await audit('sale_payment_logged', { actor: user.username, detail: `SO ${so.id}: ${amount}` });
   // The order's owner hears money came in (best-effort, never blocks the payment).

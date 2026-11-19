@@ -11,5 +11,9 @@ export async function GET(req, props) {
   const detail = await getPreDispatchApprovalDetail(params.id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   // The sale order link only for someone who can open Sales.
-  return NextResponse.json({ ...detail, canOpenSales: canAccessDepartment(user, 'Sales') });
+  // Where this person can see the order's payments: their own department's Payment Log.
+  const so = detail.payment?.so_no;
+  const logHref = !so ? null : canAccessDepartment(user, 'Accounts') ? `/accounts/payment-log?q=${encodeURIComponent(so)}`
+    : canAccessDepartment(user, 'Sales') ? `/sales/payment-log?q=${encodeURIComponent(so)}` : null;
+  return NextResponse.json({ ...detail, paymentLogHref: logHref });
 }

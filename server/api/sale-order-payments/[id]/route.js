@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isPM } from '@/lib/auth';
 import { requireAction, requireSalesOrAccountsAction } from '@/lib/action-permissions';
+import { isPaymentType } from '@/lib/payment-types.mjs';
 import { audit } from '@/lib/usb';
 
 async function guard() {
@@ -35,6 +36,10 @@ export async function PATCH(req, props) {
   if (b.received_on !== undefined) {
     if (b.received_on && !/^\d{4}-\d{2}-\d{2}$/.test(b.received_on)) return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
     set.received_on = b.received_on || null; // blank = date unknown
+  }
+  if (b.payment_type !== undefined) {
+    if (b.payment_type && !isPaymentType(b.payment_type)) return NextResponse.json({ error: 'Unknown payment type' }, { status: 400 });
+    set.payment_type = b.payment_type || null;
   }
   for (const key of ['mode', 'remark', 'invoice_ref']) {
     if (b[key] !== undefined) set[key] = String(b[key]).trim() || null;

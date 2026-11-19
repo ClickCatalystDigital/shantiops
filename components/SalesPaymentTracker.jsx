@@ -27,6 +27,8 @@ import { formatMoney } from '@/lib/format';
 import { todayISO } from '@/lib/date';
 import { defaultCompany } from '@/lib/company-profiles';
 import { useParamSync } from '@/lib/use-entity-highlight';
+import { PAYMENT_TYPES } from '@/lib/payment-types.mjs';
+const PAYMENT_OPTIONS = PAYMENT_TYPES.map(([value, label]) => ({ value, label }));
 
 // Left → right in the UI. Current Stage = the first UNticked step (what's still to do next);
 // 'Completed' once every box is ticked.
@@ -599,6 +601,7 @@ function AddPaymentSheet({ saleOrders, payments, invoices, onClose }) {
   const [invoiceId, setInvoiceId] = useState('__none__');
   const [receivedOn, setReceivedOn] = useState(todayISO());
   const [mode, setMode] = useState(MODES[0]);
+  const [payType, setPayType] = useState('advance');
   const [amount, setAmount] = useState('');
   const [remark, setRemark] = useState('');
   const [busy, setBusy] = useState(false);
@@ -620,7 +623,7 @@ function AddPaymentSheet({ saleOrders, payments, invoices, onClose }) {
     try {
       await api('/api/sale-order-payments', {
         method: 'POST',
-        body: { sale_order_id: so.id, sales_invoice_id: invoiceId === '__none__' ? null : Number(invoiceId), received_on: receivedOn, mode, amount: Number(amount), remark },
+        body: { sale_order_id: so.id, sales_invoice_id: invoiceId === '__none__' ? null : Number(invoiceId), received_on: receivedOn, mode, amount: Number(amount), remark, payment_type: payType },
       });
       showToast('Payment logged');
       router.refresh();
@@ -669,6 +672,13 @@ function AddPaymentSheet({ saleOrders, payments, invoices, onClose }) {
               </Select>
             </div>
           </div>
+          <div className="space-y-1.5">
+            <Label>Payment for</Label>
+            <Select value={payType} onValueChange={setPayType}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{PAYMENT_TYPES.map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1.5"><Label>Amount received</Label><Input type="number" min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} /></div>
           <div className="space-y-1.5"><Label>Remark</Label><Input value={remark} onChange={e => setRemark(e.target.value)} placeholder="Cheque no., UTR, note…" /></div>
         </div>
@@ -683,6 +693,7 @@ function AddPaymentSheet({ saleOrders, payments, invoices, onClose }) {
 export function PaymentLogTab({ saleOrders, payments, invoices, company = null }) {
   const router = useRouter();
   const [q, setQ] = useState('');
+  useParamSync('q', v => setQ(v)); // ?q=<order no> opens the log filtered to one order
   const [dir, setDir] = useState('desc');
   const [adding, setAdding] = useState(false);
   const [page, setPage] = useState(0);
@@ -738,6 +749,7 @@ export function PaymentLogTab({ saleOrders, payments, invoices, company = null }
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <InlineSelect value={p.mode} options={MODES} width="w-28" onChange={v => save(p, { mode: v })} />
+                  <InlineSelect value={p.payment_type} options={PAYMENT_OPTIONS} width="w-32" onChange={v => save(p, { payment_type: v })} />
                   <span>Invoice: {p.invoice_no || '—'}</span>
                   <Button size="icon-sm" variant="ghost" className="ml-auto text-muted-foreground hover:text-destructive" aria-label="Delete payment" onClick={() => remove(p)}><TrashIcon className="size-3.5" /></Button>
                 </div>
@@ -748,7 +760,7 @@ export function PaymentLogTab({ saleOrders, payments, invoices, company = null }
           <Table className="hidden md:table">
             <TableHeader>
               <TableRow>
-                {['Order ID', 'Customer Name', 'Order Value', 'Invoice Number', 'Payment Received On', 'Payment Mode', 'Remark', 'Amount Received'].map(h => <TableHead key={h}>{h}</TableHead>)}
+                {['Order ID', 'Customer Name', 'Order Value', 'Invoice Number', 'Payment Received On', 'Payment Mode', 'Payment For', 'Remark', 'Amount Received'].map(h => <TableHead key={h}>{h}</TableHead>)}
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -764,6 +776,7 @@ export function PaymentLogTab({ saleOrders, payments, invoices, company = null }
                   </TableCell>
                   <TableCell className="whitespace-nowrap"><EditCell type="date" value={p.received_on || ''} display={fmtDate(p.received_on)} onSave={v => save(p, { received_on: v })} /></TableCell>
                   <TableCell><InlineSelect value={p.mode} options={MODES} width="w-32" onChange={v => save(p, { mode: v })} /></TableCell>
+                  <TableCell><InlineSelect value={p.payment_type} options={PAYMENT_OPTIONS} width="w-36" onChange={v => save(p, { payment_type: v })} /></TableCell>
                   <TableCell className="max-w-64"><EditCell value={p.remark || ''} display={<span className="block max-w-60 truncate">{p.remark || '—'}</span>} onSave={v => save(p, { remark: v })} /></TableCell>
                   <TableCell className="tnum font-medium"><EditCell type="number" value={p.amount} display={exact(p.amount)} onSave={v => save(p, { amount: Number(v) })} /></TableCell>
                   <TableCell className="text-right">

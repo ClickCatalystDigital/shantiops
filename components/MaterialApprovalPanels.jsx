@@ -27,6 +27,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { api, showToast, formatDate } from '@/lib/client';
 import { todayISO } from '@/lib/date';
 import { accountsSignOff } from '@/lib/predispatch.mjs';
+import { paymentTypeLabel } from '@/lib/payment-types.mjs';
 import { Input } from '@/components/ui/input';
 import CertPicker from '@/components/CertPicker';
 import { useParamSync } from '@/lib/use-entity-highlight';
@@ -156,24 +157,25 @@ export function InwardApprovalsPanel({ rows = [], canDecide = false }) {
 // ---------- Pre-Dispatch ----------
 
 const inr = n => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-// Accounts' view in the review: invoice / received / due, how far paid, and the Sales log for the same order.
-function PaymentCard({ payment, saleOrder, canOpenSales }) {
+// Accounts' view in the review: order value / received / due, how far paid, and the payments themselves.
+function PaymentCard({ payment, logHref }) {
   if (!payment) return (
-    <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">No invoice is linked to this list yet, so there is nothing to check payment against.</div>
+    <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">No sale order or invoice is linked to this list, so there is nothing to check payment against.</div>
   );
   const pct = payment.total > 0 ? Math.min(100, Math.round((payment.received / payment.total) * 100)) : 0;
   const paid = payment.balance <= 0;
-  const gap = saleOrder ? saleOrder.logged - payment.received : 0;
   return (
     <div className="overflow-hidden rounded-lg border">
       <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-3 py-2">
-        <span className="text-xs font-medium">Invoice {payment.invoice_no}</span>
+        <span className="text-xs font-medium">
+          {[payment.so_no && `Order ${payment.so_no}`, payment.invoice_no && `Invoice ${payment.invoice_no}`].filter(Boolean).join(' · ')}
+        </span>
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${paid ? 'bg-success/15 text-success' : payment.received > 0 ? 'bg-warning/15 text-warning' : 'bg-muted text-muted-foreground'}`}>
           {paid ? 'Fully paid' : payment.received > 0 ? `${pct}% paid` : 'Unpaid'}
         </span>
       </div>
       <div className="grid grid-cols-3 divide-x">
-        {[['Invoice value', payment.total, ''], ['Received', payment.received, payment.received > 0 ? 'text-success' : 'text-muted-foreground'], ['Balance due', Math.max(0, payment.balance), paid ? 'text-success' : 'text-warning']].map(([label, v, tone]) => (
+        {[['Order value', payment.total, ''], ['Received', payment.received, payment.received > 0 ? 'text-success' : 'text-muted-foreground'], ['Balance due', Math.max(0, payment.balance), paid ? 'text-success' : 'text-warning']].map(([label, v, tone]) => (
           <div key={label} className="px-3 py-2">
             <p className="text-[11px] text-muted-foreground">{label}</p>
             <p className={`text-sm font-semibold tabular-nums ${tone}`}>{inr(v)}</p>
@@ -181,23 +183,20 @@ function PaymentCard({ payment, saleOrder, canOpenSales }) {
         ))}
       </div>
       <div className="h-1.5 bg-muted"><div className="h-full bg-success transition-all" style={{ width: `${pct}%` }} /></div>
-      {saleOrder && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-xs">
-          <span className="text-muted-foreground">
-            Sales payment log for{' '}
-            {canOpenSales
-              ? <a className="font-medium text-foreground underline-offset-2 hover:underline" href={`/sales/payment-orders?q=${encodeURIComponent(saleOrder.so_no)}&highlight=SO-${saleOrder.id}`} target="_blank" rel="noopener noreferrer">{saleOrder.so_no}</a>
-              : <span className="font-medium text-foreground">{saleOrder.so_no}</span>}
-          </span>
-          <span className="font-medium tabular-nums">
-            {inr(saleOrder.logged)}
-            {gap === 0 && <span className="ml-1.5 font-normal text-success">· matches</span>}
-          </span>
-          {gap > 0 && (
-            <p className="w-full rounded bg-warning/10 px-2 py-1 text-warning">
-              Sales has logged {inr(gap)} more than Accounts has received. Check the bank before clearing.
-            </p>
-          )}
+      <div className="divide-y border-t text-xs">
+        {payment.payments.length === 0 && <p className="px-3 py-2 text-muted-foreground">No payment logged yet.</p>}
+        {payment.payments.map(p => (
+          <div key={`${p.source}-${p.id}`} className="flex items-center gap-2 px-3 py-1.5">
+            <span className="w-20 shrink-0 text-muted-foreground">{p.received_on ? formatDate(p.received_on) : 'No date'}</span>
+            {paymentTypeLabel(p.payment_type) && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px]">{paymentTypeLabel(p.payment_type)}</span>}
+            <span className="truncate text-muted-foreground">{p.mode || ''}</span>
+            <span className="ml-auto font-medium tabular-nums">{inr(p.amount)}</span>
+          </div>
+        ))}
+      </div>
+      {logHref && (
+        <div className="border-t px-3 py-1.5 text-right text-xs">
+          <a className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" href={logHref} target="_blank" rel="noopener noreferrer">Open Payment Log</a>
         </div>
       )}
     </div>
@@ -280,7 +279,7 @@ function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, canDeci
               {detail.needsAccounts && (
                 <div className="sm:col-span-2">
                   <p className="mb-2 text-xs font-medium">Accounts decision</p>
-                  <PaymentCard payment={detail.payment} saleOrder={detail.saleOrder} canOpenSales={detail.canOpenSales} />
+                  <PaymentCard payment={detail.payment} logHref={detail.paymentLogHref} />
                   {a.accounts_decision ? (
                     <p className="mt-2 text-xs">
                       <Badge variant={a.accounts_decision === 'approved' ? 'default' : 'destructive'}>{a.accounts_decision}</Badge>{' '}
