@@ -90,7 +90,7 @@ export default async function QcPage({ searchParams }) {
   return <QcWorkspace projects={projects} certificates={certificates} documents={documents}
     calibrationItems={calibrationItems} ncrs={ncrs} holdPoints={holdPoints} splitOrders={splitOrders} extraDocs={extraDocs}
     canDisposition={canDisposition} canVerify={canVerify} canClose={canClose}
-    inwardApprovals={inwardApprovals} preDispatchApprovals={preDispatchApprovals}
+    inwardApprovals={inwardApprovals} preDispatchApprovals={preDispatchApprovals} jobSheetStages={jobSheetStages}
     canDecideInward={isDepartmentHead(user, 'QC')} canDecideQcPreDispatch={isDepartmentHead(user, 'QC')}
     testRecords={testRecords} jobWorkInspections={jobWorkInspections} workOrders={workOrders}
     bomAssemblies={bomAssemblies} hydroMilestoneId={hydroMilestoneId}
