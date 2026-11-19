@@ -32,7 +32,8 @@ export default function DemoEntry({ roles, customers = [], hasLead, isOwner = fa
   const [pin, setPin] = useState('');
   async function usePass(pass) {
     setBusy('pass'); setError('');
-    try { await api('/api/demo/pass', { method: 'POST', body: { pass } }); setOwner(true); setStep('roles'); }
+    // the guest pass (view-only) also skips to the roles, but keeps the box open for the owner pass
+    try { const r = await api('/api/demo/pass', { method: 'POST', body: { pass } }); if (!r.guest) setOwner(true); setStep('roles'); }
     catch (e) { setError(e.message); setPin(''); }
     finally { setBusy(null); }
   }
