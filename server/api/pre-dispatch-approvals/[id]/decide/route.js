@@ -12,6 +12,7 @@ import { canPerformAction } from '@/lib/action-permissions';
 import { execute, queryOne } from '@/lib/db';
 import { notifyDepartment } from '@/lib/notify';
 import { audit } from '@/lib/usb';
+import { overallStatus, accountsSignOff } from '@/lib/predispatch.mjs';
 
 export async function POST(req, props) {
   const params = await props.params;
@@ -28,13 +29,18 @@ export async function POST(req, props) {
   // PM check placed after those would never be reached, silently forcing every PM into the QC slot
   // even when they explicitly pass role:'production' (a real bug, found and fixed before this ever
   // shipped: confirmed live that the isPM branch below was structurally dead code).
+  // Accounts' slot exists only where Accounts is in use (lib/predispatch.mjs).
+  const ROLE_DEPT = { qc: 'QC', production: 'Production', ...(accountsSignOff() ? { accounts: 'Accounts' } : {}) };
   let role = null;
-  if (isPM(user)) role = b.role === 'production' ? 'production' : 'qc';
-  else if (canAccessDepartment(user, 'QC') && departmentRole(user, 'QC') === 'head') role = 'qc';
-  else if (canAccessDepartment(user, 'Production') && departmentRole(user, 'Production') === 'head') role = 'production';
-  if (!role) return NextResponse.json({ error: 'Forbidden — this action requires the QC or Production Head' }, { status: 403 });
+  if (isPM(user)) role = ROLE_DEPT[b.role] ? b.role : 'qc';
+  else {
+    const mine = Object.keys(ROLE_DEPT).filter(r => canAccessDepartment(user, ROLE_DEPT[r]) && departmentRole(user, ROLE_DEPT[r]) === 'head');
+    // A head of two of these departments says which one they are deciding for.
+    role = mine.includes(b.role) ? b.role : mine[0] || null;
+  }
+  if (!role) return NextResponse.json({ error: 'Forbidden — this action requires the QC, Production or Accounts Head' }, { status: 403 });
 
-  const dept = role === 'qc' ? 'QC' : 'Production';
+  const dept = ROLE_DEPT[role];
   if (!(await canPerformAction(user, dept, `${role}.predispatch.decide`))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -52,12 +58,9 @@ export async function POST(req, props) {
     [b.decision, user.username, reason, approval.id]
   );
 
-  // Overall status: rejected if either side has rejected; approved only once BOTH have approved
-  // (independently of each other — one deciding never requires or waits on the other).
+  // Overall status: rejected if any slot rejected; approved once every required slot approved.
   const fresh = await queryOne('SELECT * FROM pre_dispatch_approvals WHERE id = ?', [approval.id]);
-  let overall = 'pending';
-  if (fresh.qc_decision === 'rejected' || fresh.production_decision === 'rejected') overall = 'rejected';
-  else if (fresh.qc_decision === 'approved' && fresh.production_decision === 'approved') overall = 'approved';
+  const overall = overallStatus(fresh);
   await execute('UPDATE pre_dispatch_approvals SET status = ? WHERE id = ?', [overall, approval.id]);
 
   await audit(`predispatch_${dept.toLowerCase()}_${b.decision}`, {

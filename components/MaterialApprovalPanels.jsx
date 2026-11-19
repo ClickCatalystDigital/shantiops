@@ -26,6 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { api, showToast, formatDate } from '@/lib/client';
 import { todayISO } from '@/lib/date';
+import { accountsSignOff } from '@/lib/predispatch.mjs';
 import { Input } from '@/components/ui/input';
 import CertPicker from '@/components/CertPicker';
 import { useParamSync } from '@/lib/use-entity-highlight';
@@ -154,7 +155,20 @@ export function InwardApprovalsPanel({ rows = [], canDecide = false }) {
 
 // ---------- Pre-Dispatch ----------
 
-function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, onClose }) {
+const inr = n => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+function PaymentLine({ payment }) {
+  if (!payment) return <p className="text-xs text-warning">No invoice linked to this list yet.</p>;
+  return (
+    <p className="text-xs text-muted-foreground">
+      Invoice {payment.invoice_no}: {inr(payment.total)} · received {inr(payment.received)} ·{' '}
+      <span className={payment.balance > 0 ? 'font-medium text-warning' : 'font-medium text-success'}>
+        {payment.balance > 0 ? `${inr(payment.balance)} due` : 'fully paid'}
+      </span>
+    </p>
+  );
+}
+
+function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, canDecideAccounts = false, onClose }) {
   const router = useRouter();
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -227,6 +241,18 @@ function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, onClose
                   </p>
                 ) : <DecisionButtons canDecide={canDecideProduction} busy={busy} onDecide={(d, r) => decide('production', d, r)} />}
               </div>
+              {detail.needsAccounts && (
+                <div className="sm:col-span-2">
+                  <p className="mb-1 text-xs font-medium">Accounts — payment received</p>
+                  <PaymentLine payment={detail.payment} />
+                  {a.accounts_decision ? (
+                    <p className="mt-1 text-xs">
+                      <Badge variant={a.accounts_decision === 'approved' ? 'default' : 'destructive'}>{a.accounts_decision}</Badge>{' '}
+                      {a.accounts_decided_by} · {formatDate(a.accounts_decided_at)}{a.accounts_reason ? ` — ${a.accounts_reason}` : ''}
+                    </p>
+                  ) : <DecisionButtons canDecide={canDecideAccounts} busy={busy} onDecide={(d, r) => decide('accounts', d, r)} />}
+                </div>
+              )}
             </div>
             {detail.history.length > 1 && (
               <div className="rounded border p-2 text-xs">
@@ -234,7 +260,7 @@ function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, onClose
                 {detail.history.slice(0, -1).map(h => (
                   <div key={h.id} className="border-b py-1 last:border-0">
                     <Badge variant={h.status === 'approved' ? 'default' : 'destructive'}>{h.status}</Badge>{' '}
-                    QC: {h.qc_decision || '—'}{h.qc_reason ? ` (${h.qc_reason})` : ''} · Production: {h.production_decision || '—'}{h.production_reason ? ` (${h.production_reason})` : ''}
+                    QC: {h.qc_decision || '—'}{h.qc_reason ? ` (${h.qc_reason})` : ''} · Production: {h.production_decision || '—'}{h.production_reason ? ` (${h.production_reason})` : ''}{h.accounts_decision ? ` · Accounts: ${h.accounts_decision}${h.accounts_reason ? ` (${h.accounts_reason})` : ''}` : ''}
                   </div>
                 ))}
               </div>
@@ -247,7 +273,8 @@ function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, onClose
   );
 }
 
-export function PreDispatchApprovalsPanel({ rows = [], canDecideQc = false, canDecideProduction = false }) {
+export function PreDispatchApprovalsPanel({ rows = [], canDecideQc = false, canDecideProduction = false, canDecideAccounts = false }) {
+  const withAccounts = accountsSignOff();
   const [openId, setOpenId] = useState(null);
   // Alert link ?highlight=<packing no> opens that list's review.
   useParamSync('highlight', c => { const r = rows.find(x => x.packing_no === c); if (r) setOpenId(r.id); });
@@ -258,7 +285,7 @@ export function PreDispatchApprovalsPanel({ rows = [], canDecideQc = false, canD
           <Table>
             <TableHeader><TableRow>
               <TableHead>Packing List</TableHead><TableHead>Project</TableHead>
-              <TableHead>QC</TableHead><TableHead>Production</TableHead><TableHead>Submitted</TableHead><TableHead /></TableRow></TableHeader>
+              <TableHead>QC</TableHead><TableHead>Production</TableHead>{withAccounts && <TableHead>Accounts</TableHead>}<TableHead>Submitted</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {rows.map(r => (
                 <TableRow key={r.id} className="cursor-pointer" onClick={() => setOpenId(r.id)}>
@@ -266,6 +293,7 @@ export function PreDispatchApprovalsPanel({ rows = [], canDecideQc = false, canD
                   <TableCell>{r.project_no || '—'}</TableCell>
                   <TableCell>{r.qc_decision || 'Pending'}</TableCell>
                   <TableCell>{r.production_decision || 'Pending'}</TableCell>
+                  {withAccounts && <TableCell>{r.accounts_decision || 'Pending'}</TableCell>}
                   <TableCell>{formatDate(r.submitted_at)}</TableCell>
                   <TableCell><Button size="sm" variant="ghost">Review</Button></TableCell>
                 </TableRow>
@@ -276,7 +304,7 @@ export function PreDispatchApprovalsPanel({ rows = [], canDecideQc = false, canD
       </CardContent>
       {openId != null && (
         <PreDispatchDetailDialog id={openId} canDecideQc={canDecideQc} canDecideProduction={canDecideProduction}
-          onClose={() => setOpenId(null)} />
+          canDecideAccounts={canDecideAccounts} onClose={() => setOpenId(null)} />
       )}
     </Card>
   );
@@ -303,7 +331,7 @@ export function DispatchApprovalsPanel({ rows = [] }) {
     setBusyId(packingListId);
     try {
       await api(`/api/packing/${packingListId}/submit-for-approval`, { method: 'POST' });
-      showToast('Submitted for QC/Production review');
+      showToast('Submitted for review');
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setBusyId(null);
@@ -328,9 +356,9 @@ export function DispatchApprovalsPanel({ rows = [] }) {
                     <TableCell>{r.project_no || '—'}</TableCell>
                     <TableCell>
                       {badge ? <Badge variant={badge[0]}>{badge[1]}</Badge> : <Badge variant="secondary">Not submitted</Badge>}
-                      {status && (r.qc_decision || r.production_decision) && (
+                      {status && (r.qc_decision || r.production_decision || r.accounts_decision) && (
                         <span className="ml-2 text-xs text-muted-foreground">
-                          QC: {r.qc_decision || 'awaiting'} · Production: {r.production_decision || 'awaiting'}
+                          QC: {r.qc_decision || 'awaiting'} · Production: {r.production_decision || 'awaiting'}{accountsSignOff() ? ` · Accounts: ${r.accounts_decision || 'awaiting'}` : ''}
                         </span>
                       )}
                     </TableCell>

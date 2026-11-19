@@ -5,7 +5,7 @@ import { getPreDispatchApprovalDetail } from '@/lib/data';
 export async function GET(req, props) {
   const params = await props.params;
   const user = await getFreshSessionUser();
-  if (!['QC', 'Production', 'Dispatch'].some(d => canAccessDepartment(user, d))) {
+  if (!['QC', 'Production', 'Dispatch', 'Accounts'].some(d => canAccessDepartment(user, d))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const detail = await getPreDispatchApprovalDetail(params.id);

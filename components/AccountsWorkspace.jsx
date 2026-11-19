@@ -16,7 +16,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ServiceExpenseInbox from '@/components/ServiceExpenseInbox';
-import { LandmarkIcon, Building2Icon, PlusIcon, PercentIcon, ReceiptIcon, BookIcon, FileTextIcon, CheckIcon, XIcon, LockIcon, HistoryIcon, BoxIcon, RefreshCwIcon, IdCardIcon } from 'lucide-react';
+import { TruckIcon, LandmarkIcon, Building2Icon, PlusIcon, PercentIcon, ReceiptIcon, BookIcon, FileTextIcon, CheckIcon, XIcon, LockIcon, HistoryIcon, BoxIcon, RefreshCwIcon, IdCardIcon } from 'lucide-react';
+import { PreDispatchApprovalsPanel } from '@/components/MaterialApprovalPanels';
 import { api, showToast } from '@/lib/client';
 import { toLogoPng } from '@/lib/image-compress';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
@@ -1665,11 +1666,12 @@ function GstReturnsTab({ companies }) {
   );
 }
 
-export default function AccountsWorkspace({ companies, companyCount = companies.length, maxCompanies = 3, gstRates = [], tdsRates = [], nested = false, initialTab, user }) {
+export default function AccountsWorkspace({ companies, companyCount = companies.length, maxCompanies = 3, gstRates = [], tdsRates = [], nested = false, initialTab, user, dispatchClearance = [], canClearDispatch = false }) {
   const router = useRouter();
   const navItems = [
     { key: 'company-entities', label: 'Company Entities', icon: IdCardIcon },
     { key: 'service-expenses', label: 'Service Expenses', icon: ReceiptIcon },
+    { key: 'dispatch-clearance', label: 'Dispatch Clearance', icon: TruckIcon, badge: dispatchClearance.filter(r => !r.accounts_decision).length || undefined },
     { key: 'rates', label: 'GST & TDS Rates', icon: PercentIcon },
     { key: 'ledger', label: 'General Ledger', icon: BookIcon },
     { key: 'fixed-assets', label: 'Fixed Assets', icon: BoxIcon },
@@ -1684,6 +1686,12 @@ export default function AccountsWorkspace({ companies, companyCount = companies.
     <WorkspaceSidebar title="Accounts" icon={LandmarkIcon} items={navItems} activeKey={tab} onChange={setTab} nested={nested}>
       {tab === 'company-entities' && <CompanyEntitiesTab companies={companies} router={router} maxCompanies={maxCompanies} companyCount={companyCount} />}
       {tab === 'service-expenses' && user && <ServiceExpenseInbox mode="accounts" user={user} />}
+      {tab === 'dispatch-clearance' && (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">Packing lists waiting to leave. Check the payment agreed with the customer has come in, then clear the list for dispatch.</p>
+          <PreDispatchApprovalsPanel rows={dispatchClearance} canDecideAccounts={canClearDispatch} />
+        </div>
+      )}
       {tab === 'rates' && <RatesTab gstRates={gstRates} tdsRates={tdsRates} router={router} />}
       {tab === 'ledger' && <LedgerTab companies={companies} />}
       {tab === 'fixed-assets' && <FixedAssetsTab companies={companies} />}

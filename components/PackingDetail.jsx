@@ -20,6 +20,7 @@ import { groupForms } from '@/lib/packing-forms.mjs';
 import PackingCombined from '@/components/PackingCombined';
 import CarrierDialog from '@/components/CarrierDialog';
 import { carrierSummary, carrierDocLabel } from '@/lib/carrier.mjs';
+import { accountsSignOff, predispatchRoles } from '@/lib/predispatch.mjs';
 
 // Click-to-edit cell: saves on blur/Enter through PATCH /api/packing/[id]/items.
 function EditCell({ value, onSave, disabled, className = '' }) {
@@ -356,7 +357,7 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     try {
       await api(`/api/packing/${list.id}/submit-for-approval`, { method: 'POST' });
       setList(l => ({ ...l, preDispatchApproval: { status: 'pending' } }));
-      showToast('Approval requested from QC and Production');
+      showToast(`Approval requested from ${accountsSignOff() ? 'QC, Production and Accounts' : 'QC and Production'}`);
       router.refresh();
     } catch (err) { showToast(err.message, 'error'); }
     setRequesting(false);
@@ -365,8 +366,8 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
     // Dispatching needs both sign-offs: offer to ask for them here instead of a dead-end error.
     if (v === 'dispatched' && pda?.status !== 'approved') {
       if (list.status !== 'packed') return showToast('Mark the list packed, then request approval before dispatching', 'error');
-      if (pda?.status === 'pending') return showToast('Waiting for QC and Production to approve this list', 'error');
-      if (confirm('Dispatch needs QC and Production approval. Request approval now?')) await requestApproval();
+      if (pda?.status === 'pending') return showToast('Waiting for the approvals on this list', 'error');
+      if (confirm('Dispatch needs approval first. Request approval now?')) await requestApproval();
       return;
     }
     const prev = list.status;
@@ -466,8 +467,10 @@ export default function PackingDetail({ list: initialList, items: initialItems, 
           )}
           {!readOnly && list.status === 'packed' && pda && (
             <Badge variant={pda.status === 'approved' ? 'default' : pda.status === 'rejected' ? 'destructive' : 'secondary'}
-              title={pda.qc_decision || pda.production_decision ? `QC: ${pda.qc_decision || 'awaiting'} · Production: ${pda.production_decision || 'awaiting'}` : undefined}>
-              {pda.status === 'approved' ? 'Approved — ready to dispatch' : pda.status === 'rejected' ? 'Approval rejected' : 'Awaiting QC / Production approval'}
+              title={`QC: ${pda.qc_decision || 'awaiting'} · Production: ${pda.production_decision || 'awaiting'}${accountsSignOff() ? ` · Accounts: ${pda.accounts_decision || 'awaiting'}` : ''}`}>
+              {pda.status === 'approved' ? 'Approved — ready to dispatch'
+                : pda.status === 'rejected' ? 'Approval rejected'
+                : `Awaiting ${predispatchRoles().filter(r => pda[`${r}_decision`] !== 'approved').map(r => ({ qc: 'QC', production: 'Production', accounts: 'Accounts' })[r]).join(' / ') || 'review'}`}
             </Badge>
           )}
           {!readOnly && canRequestApproval && (

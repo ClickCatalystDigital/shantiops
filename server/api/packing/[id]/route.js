@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { predispatchRoles, needsEwayBill } from '@/lib/predispatch.mjs';
+const ROLE_NAME = { qc: 'QC', production: 'Production', accounts: 'Accounts' };
 import { execute, queryOne, queryAll, withTransaction } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
@@ -79,9 +81,18 @@ export async function PATCH(req, props) {
   // submit-for-approval (POST .../submit-for-approval) before dispatch can proceed.
   if (b.status === 'dispatched') {
     const latest = await queryOne(
-      'SELECT status FROM pre_dispatch_approvals WHERE packing_list_id = ? ORDER BY id DESC LIMIT 1', [params.id]);
+      'SELECT * FROM pre_dispatch_approvals WHERE packing_list_id = ? ORDER BY id DESC LIMIT 1', [params.id]);
     if (latest?.status !== 'approved') {
-      return NextResponse.json({ error: 'Held for QC/Production final review — submit for approval and get both sign-offs before dispatching.' }, { status: 400 });
+      const waiting = latest ? predispatchRoles().filter(r => latest[`${r}_decision`] !== 'approved').map(r => ROLE_NAME[r]) : [];
+      return NextResponse.json({ error: waiting.length
+        ? `Waiting for ${waiting.join(' and ')} to approve this list before it can be dispatched.`
+        : `Submit this list for approval (${predispatchRoles().map(r => ROLE_NAME[r]).join(', ')}) before dispatching.` }, { status: 400 });
+    }
+    // GST: goods worth more than ₹50,000 can't move without an e-way bill.
+    const cur = await queryOne(
+      `SELECT pl.eway_bill_no, si.total FROM packing_lists pl LEFT JOIN sales_invoices si ON si.id = pl.sales_invoice_id WHERE pl.id = ?`, [params.id]);
+    if (!cur?.eway_bill_no && needsEwayBill(cur?.total)) {
+      return NextResponse.json({ error: 'This consignment is over ₹50,000: generate the e-way bill before dispatching.' }, { status: 400 });
     }
   }
 

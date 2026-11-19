@@ -7,6 +7,7 @@ import { getFreshSessionUser, requireDepartment } from '@/lib/auth';
 import { requireAction } from '@/lib/action-permissions';
 import { execute, queryOne, queryAll } from '@/lib/db';
 import { notifyDepartmentHeads } from '@/lib/notify';
+import { accountsSignOff } from '@/lib/predispatch.mjs';
 import { audit } from '@/lib/usb';
 import { tabLink } from '@/lib/alert-links.mjs';
 
@@ -59,6 +60,7 @@ export async function POST(req, props) {
     };
     await notifyDepartmentHeads('QC', { ...note, link: tabLink('/qc', 'predispatch-approvals', { highlight: list.packing_no }) });
     await notifyDepartmentHeads('Production', { ...note, link: tabLink('/production/shop', 'approvals', { highlight: list.packing_no }) });
+    if (accountsSignOff()) await notifyDepartmentHeads('Accounts', { ...note, link: tabLink('/accounts', 'dispatch-clearance', { highlight: list.packing_no }) });
   } catch (err) { /* notification is best-effort */ }
 
   return NextResponse.json({ ok: true, id });
