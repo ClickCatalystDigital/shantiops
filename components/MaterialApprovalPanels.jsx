@@ -168,10 +168,12 @@ function PaymentCard({ payment, saleOrder, canOpenSales }) {
     <div className="overflow-hidden rounded-lg border">
       <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-3 py-2">
         <span className="text-xs font-medium">Invoice {payment.invoice_no}</span>
-        <Badge variant={paid ? 'default' : 'secondary'}>{paid ? 'Fully paid' : payment.received > 0 ? `${pct}% paid` : 'Unpaid'}</Badge>
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${paid ? 'bg-success/15 text-success' : payment.received > 0 ? 'bg-warning/15 text-warning' : 'bg-muted text-muted-foreground'}`}>
+          {paid ? 'Fully paid' : payment.received > 0 ? `${pct}% paid` : 'Unpaid'}
+        </span>
       </div>
       <div className="grid grid-cols-3 divide-x">
-        {[['Invoice value', payment.total, ''], ['Received', payment.received, 'text-success'], ['Balance due', Math.max(0, payment.balance), paid ? 'text-success' : 'text-warning']].map(([label, v, tone]) => (
+        {[['Invoice value', payment.total, ''], ['Received', payment.received, payment.received > 0 ? 'text-success' : 'text-muted-foreground'], ['Balance due', Math.max(0, payment.balance), paid ? 'text-success' : 'text-warning']].map(([label, v, tone]) => (
           <div key={label} className="px-3 py-2">
             <p className="text-[11px] text-muted-foreground">{label}</p>
             <p className={`text-sm font-semibold tabular-nums ${tone}`}>{inr(v)}</p>
@@ -187,7 +189,10 @@ function PaymentCard({ payment, saleOrder, canOpenSales }) {
               ? <a className="font-medium text-foreground underline-offset-2 hover:underline" href={`/sales/payment-orders?q=${encodeURIComponent(saleOrder.so_no)}&highlight=SO-${saleOrder.id}`} target="_blank" rel="noopener noreferrer">{saleOrder.so_no}</a>
               : <span className="font-medium text-foreground">{saleOrder.so_no}</span>}
           </span>
-          <span className="font-medium tabular-nums">{inr(saleOrder.logged)}</span>
+          <span className="font-medium tabular-nums">
+            {inr(saleOrder.logged)}
+            {gap === 0 && <span className="ml-1.5 font-normal text-success">· matches</span>}
+          </span>
           {gap > 0 && (
             <p className="w-full rounded bg-warning/10 px-2 py-1 text-warning">
               Sales has logged {inr(gap)} more than Accounts has received. Check the bank before clearing.
