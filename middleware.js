@@ -22,6 +22,10 @@ function demoGuard(req, pathname) {
   if (pathname === '/login' || pathname === '/d-login') return NextResponse.redirect(new URL('/demo', req.url));
   if (DEMO_PUBLIC.includes(pathname)) return NextResponse.next();
   const write = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+  // Guest pass (lib/demo-leads.js): view-only. Only signing out and asking Ember AI get through (saving its drafts doesn't).
+  if (write && req.cookies.get('demo_lead')?.value?.startsWith('guest.') && !['/api/logout', '/api/assistant/chat'].includes(pathname)) {
+    return NextResponse.json({ error: 'This demo pass is view-only, so nothing can be changed.' }, { status: 403 });
+  }
   const sends = /\/send-(email|whatsapp)$/.test(pathname);
   // Ember AI chat stays open: two questions per visitor, counted in server/api/assistant/chat.
   const aiChat = pathname === '/api/assistant/chat' || pathname === '/api/assistant/act'; // act runs routes in-process; each route's own checks apply
