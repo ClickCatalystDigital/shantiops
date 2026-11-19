@@ -10,7 +10,7 @@ export async function POST(req) {
   if (await passLocked(ip)) return NextResponse.json({ error: 'Too many tries. Try again tomorrow.' }, { status: 429 });
   // The guest pass (view-only, GUEST_USES browsers per PIN): a week in this browser.
   if (guestPassMatches(pass)) {
-    const token = await takeGuestUse();
+    const token = await takeGuestUse(req.headers.get('host') || '');
     if (!token) return NextResponse.json({ error: `This pass has been used ${GUEST_USES} times and has expired. Ask us for a new one, or fill in the form.` }, { status: 403 });
     const res = NextResponse.json({ ok: true, guest: true });
     res.cookies.set('demo_lead', token, { path: '/', httpOnly: true, sameSite: 'lax', secure: true, maxAge: 60 * 60 * 24 * 7 });
