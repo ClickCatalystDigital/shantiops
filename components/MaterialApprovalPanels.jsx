@@ -179,9 +179,15 @@ function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, onClose
         <DialogHeader><DialogTitle>Pre-Dispatch Review</DialogTitle></DialogHeader>
         {!detail ? <p className="text-sm text-muted-foreground">Loading…</p> : (
           <div className="flex flex-col gap-4 text-sm">
-            <div>
-              <span className="font-medium">{detail.packing.list.packing_no}</span> — {detail.packing.list.customer_name}
-              <p className="text-xs text-muted-foreground">{detail.packing.items.length} item{detail.packing.items.length === 1 ? '' : 's'}</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="font-medium">{detail.packing.list.packing_no}</span> — {detail.packing.list.customer_name}
+                <p className="text-xs text-muted-foreground">{detail.packing.items.length} item{detail.packing.items.length === 1 ? '' : 's'}</p>
+              </div>
+              {/* The reviewer checks the actual list before signing it off. */}
+              <Button asChild variant="outline" size="sm">
+                <a href={`/api/packing/${detail.packing.list.id}/pdf`} target="_blank" rel="noopener noreferrer">Download packing list</a>
+              </Button>
             </div>
             {detail.qcRecords.length > 0 && (
               <div className="text-xs">
