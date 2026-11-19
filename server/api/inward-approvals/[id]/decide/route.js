@@ -48,6 +48,12 @@ export async function POST(req, props) {
     "UPDATE inward_approvals SET status = ?, decided_by = ?, decided_at = CURRENT_TIMESTAMP, reason = ? WHERE id = ?",
     [b.decision, user.username, reason, approval.id]
   );
+  // The inward review IS the incoming inspection: close the pending Incoming Inspection test record that
+  // receiving opened for this line, so it doesn't sit "pending" forever next to an approved delivery.
+  await execute(
+    `UPDATE qc_records SET result = ?, inspector = COALESCE(inspector, ?), tested_on = COALESCE(tested_on, date('now'))
+      WHERE bom_item_id = ? AND test_type = 'Incoming Inspection' AND result = 'pending'`,
+    [b.decision === 'approved' ? 'pass' : 'fail', user.username, approval.bom_item_id]);
   await audit(`inward_approval_${b.decision}`, {
     actor: user.username,
     detail: `inward_approvals ${approval.id} (bom_item ${approval.bom_item_id})${reason ? ` — ${reason}` : ''}`,

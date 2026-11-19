@@ -186,8 +186,13 @@ function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, onClose
             {detail.qcRecords.length > 0 && (
               <div className="text-xs">
                 <p className="mb-1 font-medium">QC records (context — not the gate itself)</p>
-                {detail.qcRecords.map(q => (
-                  <div key={q.id}>{q.test_type}: {q.result}{q.dispatch_eligible ? ' · dispatch-eligible' : ''}</div>
+                {/* One line per test type, counted: a boiler has dozens of incoming inspections. */}
+                {Object.entries(detail.qcRecords.reduce((m, q) => {
+                  const t = (m[q.test_type] ||= {});
+                  t[q.result || 'pending'] = (t[q.result || 'pending'] || 0) + 1;
+                  return m;
+                }, {})).map(([type, by]) => (
+                  <div key={type}>{type}: {Object.entries(by).map(([r, n]) => `${n} ${r}`).join(', ')}</div>
                 ))}
               </div>
             )}
