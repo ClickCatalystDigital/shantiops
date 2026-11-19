@@ -10,5 +10,6 @@ export async function GET(req, props) {
   }
   const detail = await getPreDispatchApprovalDetail(params.id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json(detail);
+  // The sale order link only for someone who can open Sales.
+  return NextResponse.json({ ...detail, canOpenSales: canAccessDepartment(user, 'Sales') });
 }

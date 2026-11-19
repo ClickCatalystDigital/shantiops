@@ -10,7 +10,7 @@ import { NextResponse } from 'next/server';
 import { checkSalesPerson } from '@/lib/sales-people';
 import { execute, queryAll, queryOne, nextCounterValue } from '@/lib/db';
 import { getFreshSessionUser, isInternal, requireDepartment } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { requireAction, requireSalesOrAccountsAction } from '@/lib/action-permissions';
 import { getSaleOrders } from '@/lib/data';
 import { audit } from '@/lib/usb';
 import { notifyDepartment, notifyPMs } from '@/lib/notify';
@@ -44,9 +44,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
-  const denied = requireDepartment(user, 'Sales');
-  if (denied) return denied;
-  const actionDenied = await requireAction(user, 'Sales', 'sales.saleorder.create');
+  const actionDenied = await requireSalesOrAccountsAction(user, 'sales.saleorder.create');
   if (actionDenied) return actionDenied;
 
   const b = await req.json();

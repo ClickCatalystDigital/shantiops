@@ -245,6 +245,15 @@ function PreDispatchDetailDialog({ id, canDecideQc, canDecideProduction, canDeci
                 <div className="sm:col-span-2">
                   <p className="mb-1 text-xs font-medium">Accounts — payment received</p>
                   <PaymentLine payment={detail.payment} />
+                  {detail.saleOrder && (
+                    <p className="text-xs text-muted-foreground">
+                      Order{' '}
+                      {detail.canOpenSales
+                        ? <a className="underline" href={`/sales/payment-orders?q=${encodeURIComponent(detail.saleOrder.so_no)}&highlight=SO-${detail.saleOrder.id}`} target="_blank" rel="noopener noreferrer">{detail.saleOrder.so_no}</a>
+                        : detail.saleOrder.so_no}
+                      : {inr(detail.saleOrder.total)} · Sales payment log {inr(detail.saleOrder.logged)}
+                    </p>
+                  )}
                   {a.accounts_decision ? (
                     <p className="mt-1 text-xs">
                       <Badge variant={a.accounts_decision === 'approved' ? 'default' : 'destructive'}>{a.accounts_decision}</Badge>{' '}

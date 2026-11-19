@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 import { checkSalesPerson } from '@/lib/sales-people';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, canAccessDepartment, isPM, isDepartmentHead } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { requireAction, requireSalesOrAccountsAction } from '@/lib/action-permissions';
 import { getSaleOrderDetail } from '@/lib/data';
 import { COMPANY_NAMES } from '@/lib/qc-doc-pdf.js';
 import { audit } from '@/lib/usb';
@@ -49,11 +49,7 @@ export async function PATCH(req, props) {
   const user = await getFreshSessionUser();
   const hidden = await hiddenSalesRecord(user, 'sale_order', params.id); // plan 2a: own records only
   if (hidden) return hidden;
-  if (!isPM(user)) {
-    const denied = requireDepartment(user, 'Sales');
-    if (denied) return denied;
-  }
-  const actionDenied = await requireAction(user, 'Sales', 'sales.saleorder.status');
+  const actionDenied = await requireSalesOrAccountsAction(user, 'sales.saleorder.status');
   if (actionDenied) return actionDenied;
   const b = await req.json();
   if (b.status !== undefined && !STATUSES.includes(b.status)) {

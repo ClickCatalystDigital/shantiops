@@ -4,16 +4,12 @@ import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isPM } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { requireAction, requireSalesOrAccountsAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 
 async function guard() {
   const user = await getFreshSessionUser();
-  if (!isPM(user)) {
-    const denied = requireDepartment(user, 'Sales');
-    if (denied) return { denied };
-  }
-  const actionDenied = await requireAction(user, 'Sales', 'sales.payment.write');
+  const actionDenied = await requireSalesOrAccountsAction(user, 'sales.payment.write');
   return actionDenied ? { denied: actionDenied } : { user };
 }
 

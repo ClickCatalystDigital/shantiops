@@ -3,7 +3,7 @@
 // components/AccountsWorkspace.jsx — Accounts' own workspace, same shared-sidebar shape as
 // HrWorkspace/PayrollWorkspace. Phase 0 (ACCOUNTING-IMPLEMENTATION-PLAN.md) only needs Company
 // Settings; later phases add tabs here (GST/TDS masters in Phase 1, Sales Invoice in Phase 2, ...).
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEntityHighlight } from '@/lib/use-entity-highlight';
 import LogoCropDialog from '@/components/LogoCropDialog';
@@ -16,8 +16,10 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ServiceExpenseInbox from '@/components/ServiceExpenseInbox';
-import { TruckIcon, LandmarkIcon, Building2Icon, PlusIcon, PercentIcon, ReceiptIcon, BookIcon, FileTextIcon, CheckIcon, XIcon, LockIcon, HistoryIcon, BoxIcon, RefreshCwIcon, IdCardIcon } from 'lucide-react';
+import { TruckIcon, ClipboardListIcon, WalletIcon, LandmarkIcon, Building2Icon, PlusIcon, PercentIcon, ReceiptIcon, BookIcon, FileTextIcon, CheckIcon, XIcon, LockIcon, HistoryIcon, BoxIcon, RefreshCwIcon, IdCardIcon } from 'lucide-react';
 import { PreDispatchApprovalsPanel } from '@/components/MaterialApprovalPanels';
+import { PaymentOrdersTab, PaymentLogTab } from '@/components/SalesPaymentTracker';
+import { unpackRows } from '@/lib/row-pack.mjs';
 import { api, showToast } from '@/lib/client';
 import { toLogoPng } from '@/lib/image-compress';
 import WorkspaceSidebar from '@/components/WorkspaceSidebar';
@@ -1666,26 +1668,45 @@ function GstReturnsTab({ companies }) {
   );
 }
 
-export default function AccountsWorkspace({ companies, companyCount = companies.length, maxCompanies = 3, gstRates = [], tdsRates = [], nested = false, initialTab, user, dispatchClearance = [], canClearDispatch = false }) {
+// Order Tracker and Payment Log: the same screens Sales has, on the same data. Their lists load only on these
+// tabs, so switching to one reloads the page for it.
+function OrdersTabs({ tab, orders, router }) {
+  const saleOrders = useMemo(() => (orders.loaded ? unpackRows(orders.saleOrders) : []), [orders]);
+  useEffect(() => { if (!orders.loaded) router.replace(`/accounts/${tab}`); }, [orders.loaded, tab, router]);
+  if (!orders.loaded) return <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>;
+  return tab === 'payment-orders'
+    ? <PaymentOrdersTab saleOrders={saleOrders} payments={orders.salePayments} invoices={orders.invoices} users={orders.users} company={orders.company} />
+    : <PaymentLogTab saleOrders={saleOrders} payments={orders.salePayments} invoices={orders.invoices} company={orders.company} />;
+}
+
+export default function AccountsWorkspace({ companies, companyCount = companies.length, maxCompanies = 3, gstRates = [], tdsRates = [], nested = false, initialTab, user, dispatchClearance = [], canClearDispatch = false, orders = { loaded: false } }) {
   const router = useRouter();
+  // Grouped the way Accounts works: money coming in, the books, tax, then setup.
   const navItems = [
-    { key: 'company-entities', label: 'Company Entities', icon: IdCardIcon },
-    { key: 'service-expenses', label: 'Service Expenses', icon: ReceiptIcon },
+    { key: 'divider-receivables', divider: true, label: 'Receivables' },
+    { key: 'payment-orders', label: 'Order Tracker', icon: ClipboardListIcon },
+    { key: 'payment-log', label: 'Payment Log', icon: WalletIcon },
     { key: 'dispatch-clearance', label: 'Dispatch Clearance', icon: TruckIcon, badge: dispatchClearance.filter(r => !r.accounts_decision).length || undefined },
-    { key: 'rates', label: 'GST & TDS Rates', icon: PercentIcon },
+    { key: 'divider-books', divider: true, label: 'Books' },
     { key: 'ledger', label: 'General Ledger', icon: BookIcon },
-    { key: 'fixed-assets', label: 'Fixed Assets', icon: BoxIcon },
-    { key: 'gst-returns', label: 'GST Returns', icon: FileTextIcon },
     { key: 'bank-reconciliation', label: 'Bank Reconciliation', icon: LandmarkIcon },
+    { key: 'fixed-assets', label: 'Fixed Assets', icon: BoxIcon },
+    { key: 'service-expenses', label: 'Service Expenses', icon: ReceiptIcon },
+    { key: 'divider-tax', divider: true, label: 'Tax' },
+    { key: 'gst-returns', label: 'GST Returns', icon: FileTextIcon },
+    { key: 'rates', label: 'GST & TDS Rates', icon: PercentIcon },
+    { key: 'divider-setup', divider: true, label: 'Setup' },
+    { key: 'company-entities', label: 'Company Entities', icon: IdCardIcon },
     { key: 'audit-log', label: 'Audit Log', icon: HistoryIcon },
   ];
   // Deep-link tab selection (Part B) — same server-prop pattern as QcWorkspace.jsx.
-  const [tab, setTab] = useState(navItems.some(i => i.key === initialTab) ? initialTab : 'company-entities');
+  const [tab, setTab] = useState(navItems.some(i => i.key === initialTab && !i.divider) ? initialTab : 'dispatch-clearance');
 
   return (
     <WorkspaceSidebar title="Accounts" icon={LandmarkIcon} items={navItems} activeKey={tab} onChange={setTab} nested={nested}>
       {tab === 'company-entities' && <CompanyEntitiesTab companies={companies} router={router} maxCompanies={maxCompanies} companyCount={companyCount} />}
       {tab === 'service-expenses' && user && <ServiceExpenseInbox mode="accounts" user={user} />}
+      {['payment-orders', 'payment-log'].includes(tab) && <OrdersTabs tab={tab} orders={orders} router={router} />}
       {tab === 'dispatch-clearance' && (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">Packing lists waiting to leave. Check the payment agreed with the customer has come in, then clear the list for dispatch.</p>

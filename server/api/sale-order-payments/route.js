@@ -4,7 +4,7 @@ import { hiddenSalesRecord } from '@/lib/sales-visibility';
 import { NextResponse } from 'next/server';
 import { execute, queryAll, queryOne } from '@/lib/db';
 import { getFreshSessionUser, requireDepartment, isPM, isInternal } from '@/lib/auth';
-import { requireAction } from '@/lib/action-permissions';
+import { requireAction, requireSalesOrAccountsAction } from '@/lib/action-permissions';
 import { audit } from '@/lib/usb';
 import { notifyUsername } from '@/lib/notify';
 import { tabLink } from '@/lib/alert-links.mjs';
@@ -23,11 +23,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   const user = await getFreshSessionUser();
-  if (!isPM(user)) {
-    const denied = requireDepartment(user, 'Sales');
-    if (denied) return denied;
-  }
-  const actionDenied = await requireAction(user, 'Sales', 'sales.payment.write');
+  const actionDenied = await requireSalesOrAccountsAction(user, 'sales.payment.write');
   if (actionDenied) return actionDenied;
 
   const b = await req.json();
