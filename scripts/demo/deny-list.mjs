@@ -22,9 +22,41 @@ const REPL = [
   [/36AA[A-Z0-9]{11}|AA[EV]CS\d{4}[A-Z]/g, ''],
   [/nacharam|kucharam|kuncharam|toopran/gi, 'Pune'], [/telangana/gi, 'Maharashtra'], [/hyderabad/gi, 'Pune'],
 ];
+
+// Misspellings in the copied product list (demo only; the client's own data is left as is).
+// Whole words, case kept: ROTORY -> ROTARY, Rotory -> Rotary.
+const SPELLING = {
+  rotory: 'rotary', exclussions: 'exclusions', exclussion: 'exclusion', exlcussions: 'exclusions', exlcussion: 'exclusion',
+  exclusssions: 'exclusions', exlclussions: 'exclusions', equalent: 'equivalent', metalic: 'metallic',
+  laisoning: 'liaisoning', liasoning: 'liaisoning', lasioning: 'liaisoning', installtion: 'installation',
+  installaion: 'installation', instalation: 'installation', isntallation: 'installation', battry: 'battery',
+  bttery: 'battery', bettery: 'battery', certfied: 'certified', certifide: 'certified', broze: 'bronze', bronge: 'bronze',
+  solonoid: 'solenoid', transparant: 'transparent', carban: 'carbon', condensat: 'condensate', dearator: 'deaerator',
+  furance: 'furnace', commercail: 'commercial', suppply: 'supply', ferruls: 'ferrules', miunted: 'mounted',
+  limts: 'limits', limtis: 'limits', guidence: 'guidance', ntoe: 'note', tehnical: 'technical', tehcnical: 'technical',
+  specifictions: 'specifications', specifiations: 'specifications', speicifcations: 'specifications',
+  expanssion: 'expansion', calries: 'calories', chrgeable: 'chargeable', accomodation: 'accommodation', pully: 'pulley',
+  provison: 'provision', guidlines: 'guidelines', controler: 'controller', chiminey: 'chimney', chquered: 'chequered',
+  ducitng: 'ducting', fiiling: 'filling', maintainence: 'maintenance', insualtion: 'insulation', excludded: 'excluded',
+  draiwng: 'drawing', pedestial: 'pedestal', commisisoning: 'commissioning', sequencial: 'sequential', timmer: 'timer',
+  mannual: 'manual', europian: 'European', colelctor: 'collector', miscelanious: 'miscellaneous', fliter: 'filter',
+  buner: 'burner', combuster: 'combustor', siimplex: 'simplex', thermiic: 'thermic', briquetes: 'briquettes',
+  brickettes: 'briquettes', grundfoss: 'Grundfos', danfos: 'Danfoss', tappered: 'tapered', hooper: 'hopper',
+};
+const spellRe = new RegExp(`\\b(${Object.keys(SPELLING).join('|')})\\b`, 'gi');
+export function fixSpelling(s) {
+  if (s == null) return s;
+  return String(s).replace(spellRe, w => {
+    const to = SPELLING[w.toLowerCase()];
+    if (w === w.toUpperCase()) return to.toUpperCase();
+    if (w[0] === w[0].toUpperCase()) return to[0].toUpperCase() + to.slice(1);
+    return to;
+  });
+}
+
 export function clean(s) {
   if (s == null) return s;
   let t = String(s);
   for (const [re, to] of REPL) t = t.replace(re, to);
-  return t;
+  return fixSpelling(t);
 }
