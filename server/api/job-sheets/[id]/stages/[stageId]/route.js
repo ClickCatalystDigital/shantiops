@@ -12,7 +12,7 @@ import { todayISO } from '@/lib/date';
 import { isISODate, recomputeSheetDates } from '@/lib/job-sheets';
 import { audit } from '@/lib/usb';
 import { notifyDepartment } from '@/lib/notify';
-import { syncProductionFromJobSheets, maybeStartProductionForProject } from '@/lib/milestone-auto';
+import { syncProductionFromJobSheets, syncHydroFromJobSheetStage, maybeStartProductionForProject } from '@/lib/milestone-auto';
 import { isDispatchStage } from '@/lib/job-sheet-stages.mjs';
 import { tabLink } from '@/lib/alert-links.mjs';
 
@@ -44,7 +44,10 @@ export async function PATCH(req, props) {
     // milestone keys done together — re-check on every QC sign, since this could be the last one.
     try {
       const sheet = await queryOne('SELECT project_id FROM job_sheets WHERE id = ?', [sheetId]);
-      if (sheet?.project_id) await syncProductionFromJobSheets(sheet.project_id, user.username);
+      if (sheet?.project_id) {
+        await syncHydroFromJobSheetStage(sheet.project_id, row.name, user.username);
+        await syncProductionFromJobSheets(sheet.project_id, user.username);
+      }
     } catch { /* best-effort */ }
     return NextResponse.json({ ok: true });
   }
